@@ -1,5 +1,5 @@
 # ReturnDistributions
-Fitting many probability distributions to asset returns
+Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`.
 
 ```
 prices file: spy_tlt_vxx.csv
