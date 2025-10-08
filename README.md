@@ -1,5 +1,5 @@
 # ReturnDistributions
-Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`.
+Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`. To fit returns normalized by trailing exponentially weighted volatility set `normalize_vol_ewma = True`.
 ![Alt text](/spy_log_returns.png)
 ![Alt text](/vxx_log_returns.png)
 ```
