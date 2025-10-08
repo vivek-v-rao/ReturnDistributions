@@ -1,6 +1,7 @@
 # ReturnDistributions
 Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`.
-
+![Alt text](/spy_log_returns.png)
+![Alt text](/vxx_log_returns.png)
 ```
 prices file: spy_tlt_vxx.csv
 return type: log
