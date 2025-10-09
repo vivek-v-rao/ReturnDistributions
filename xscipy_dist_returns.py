@@ -21,6 +21,7 @@ INCLUDE_EXTRA = False   # set to False if you want the fast set only
 CORE_DISTS = {
     # real-line support
     'norm':                 ['loc', 'scale'],
+    'skewnorm':             ['a', 'loc', 'scale'],
     'laplace':              ['loc', 'scale'],
     'laplace_asymmetric':   ['kappa', 'loc', 'scale'],
     'logistic':             ['loc', 'scale'],
@@ -256,7 +257,7 @@ if __name__ == "__main__":
     max_dist = None     # max number of dists to try
     nplot_dist = 5      # set to 0 to disable plotting
     nplot_log_dist = nplot_dist  # set to 0 to disable log-density plotting
-    normalize_vol_ewma = True       # True: divide returns by EWMA vol before fitting
+    normalize_vol_ewma = False       # True: divide returns by EWMA vol before fitting
     ewma_lambda = 0.94              # RiskMetrics decay parameter (lambda)
     ewma_warmup = 100               # drop the first N normalized obs to allow warm-up
     # always plot these distributions, even if not in the top nplot_dist by AIC
