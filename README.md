@@ -1,5 +1,5 @@
 # ReturnDistributions
-Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`. To fit returns normalized by trailing exponentially weighted volatility set `normalize_vol_ewma = True`. Some distributions that generally fit returns well are the Johnson SU, Normal Inverse Gaussian, and Student's t. For VXX (which tracks VIX futures) and to a lesser extent SPY, distributions that allow for skew fit better. The canonical normal distribution fits the worst, because it is thin-tailed.
+Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`. To fit returns normalized by trailing exponentially weighted volatility set `normalize_vol_ewma = True`. Some distributions that generally fit returns well are the [Johnson's SU](https://en.wikipedia.org/wiki/Johnson%27s_SU-distribution), [Normal-Inverse Gaussian](https://en.wikipedia.org/wiki/Normal-inverse_Gaussian_distribution), and [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution). For VXX (which tracks VIX futures) and to a lesser extent SPY, distributions that allow for skew fit better. The canonical normal distribution fits the worst, because it is thin-tailed.
 ![Alt text](/spy_log_returns.png)
 ![Alt text](/vxx_log_returns.png)
 ```
