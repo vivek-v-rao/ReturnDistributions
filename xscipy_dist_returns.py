@@ -5,6 +5,8 @@ import time
 import numpy as np
 import pandas as pd
 from scipy import stats
+from return_distributions import fit_one as _shared_fit_one
+from return_distributions import fit_many as _shared_fit_many, fitted_distribution
 
 # ------------------------------------------------------------
 # which groups to include
@@ -112,70 +114,12 @@ def _skew_kurt(dist, params):
 # fitting helpers
 # ------------------------------------------------------------
 def fit_one(x: np.ndarray, name: str, param_names: list[str]) -> dict:
-    """Fit a single scipy.stats distribution by MLE and compute GOF metrics + moments."""
-    dist = getattr(stats, name)
-    params = dist.fit(x)         # tuple: shape..., loc, scale
-
-    # log-likelihood and ICs
-    ll = float(np.sum(dist.logpdf(x, *params)))
-    n = x.size
-    k = len(params)
-    aic = 2.0 * k - 2.0 * ll
-    bic = np.log(n) * k - 2.0 * ll
-
-    # KS
-    ks_stat, ks_p = stats.kstest(x, dist.cdf, args=params)
-
-    # Moments (skew, excess kurt)
-    if name == 't':
-        nu = params[0]
-        skew = 0.0 if nu > 3.0 else np.nan
-        kurt = 6.0 / (nu - 4.0) if nu > 4.0 else np.nan
-    else:
-        skew, kurt = _skew_kurt(dist, params)
-
-    out = {
-        'name': name, 'n': n, 'k': k,
-        'loglik': ll, 'aic': aic, 'bic': bic,
-        'ks': float(ks_stat), 'ks_p': float(ks_p),
-        'skew': float(skew) if np.isfinite(skew) else np.nan,
-        'kurt': float(kurt) if np.isfinite(kurt) else np.nan,
-    }
-    for nm, val in zip(param_names, params):
-        out[nm] = float(val)
-    return out
+    """Compatibility wrapper; estimation now lives in the reusable package."""
+    return _shared_fit_one(x, name, param_names)
 
 def fit_many(x: np.ndarray, dists: dict[str, list[str]]) -> pd.DataFrame:
     """Fit all distributions in dists and return a tidy dataframe sorted by AIC."""
-    rows = []
-    for name, pnames in dists.items():
-        t0 = time.perf_counter()
-        try:
-            row = fit_one(x, name, pnames)
-            row['fit_sec'] = float(time.perf_counter() - t0)
-            rows.append(row)
-        except Exception as e:
-            rows.append({'name': name, 'fit_sec': float(time.perf_counter() - t0), 'error': str(e)})
-    df = pd.DataFrame(rows)
-
-    # order columns: put skew/kurt BEFORE 'df'
-    base_cols = ['name', 'n', 'k', 'loglik', 'aic', 'bic', 'ks', 'ks_p', 'skew', 'kurt']
-    param_cols = [c for c in df.columns if c not in base_cols + ['error']]
-
-    preferred = [c for c in [
-        'df','a','b','p','q','alpha','beta','h','k','c','lam','nc','s','mu','kappa','loc','scale'
-    ] if c in param_cols]
-    rest = [c for c in param_cols if c not in preferred and c != 'fit_sec']
-    cols = base_cols + preferred + sorted(rest)
-    if 'fit_sec' in df.columns:
-        cols.append('fit_sec')
-    df = df[[c for c in cols if c in df.columns]]
-
-    if 'aic' in df.columns:
-        df_ok = df[df.get('aic').notna()].sort_values(['aic', 'bic'], ascending=[True, True], kind='mergesort')
-        df_err = df[df.get('aic').isna()]
-        df = pd.concat([df_ok, df_err], axis=0, ignore_index=True)
-    return df.reset_index(drop=True)
+    return _shared_fit_many(x, dists)
 
 # ------------------------------------------------------------
 # plotting helper (KDE + top-N PDFs + always-plot list)
@@ -193,7 +137,7 @@ def plot_top_densities(x: np.ndarray,
     import matplotlib.pyplot as plt
     from scipy import stats as _st
 
-    dfok = results_df[results_df.get('aic').notna()]
+    dfok = results_df[results_df.status.eq('ok')]
     res_top = dfok.head(nplot_dist)
 
     # ensure always-plot dists are included (if successfully fitted)
@@ -227,12 +171,11 @@ def plot_top_densities(x: np.ndarray,
         name = row['name']
         pnames = catalog.get(name, [])
         try:
-            params = [row[p] for p in pnames if p in row and pd.notna(row[p])]
-            dist = getattr(_st, name)
+            dist = fitted_distribution(row)
             if log_scale:
-                yy = dist.logpdf(xx, *params)
+                yy = dist.logpdf(xx)
             else:
-                yy = dist.pdf(xx, *params)
+                yy = dist.pdf(xx)
             plt.plot(xx, yy, label=f'log {name}' if log_scale else name)
         except Exception as e:
             print(f"plot skip {name}: {e}")
