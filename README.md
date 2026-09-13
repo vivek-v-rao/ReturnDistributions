@@ -104,6 +104,18 @@ The default now fits all twelve joint models. Select a smaller set with, for exa
 python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --models normal student-t nig-symmetric nig-skewed
 ```
 
+Use `--models all` to fit every supported joint model, including optional and
+experimental families:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models all --weights SPY=0.6 TLT=0.4
+```
+
+The expanded model list is printed, along with a warning that some fits
+(especially SDB and slash) may be slow. `all` must be used alone, not mixed
+with explicit model names. Omitting `--models` still selects the twelve-model
+default. Univariate-only families are not included.
+
 Hyperbolic/NIG models use the normal variance-mean mixture
 `X = location + W*gamma + sqrt(W)*L*Z`, where `W ~ GIG(lambda, chi=1, psi)`
 and `scatter = L L'`. Fixing chi=1 resolves the mixing/scatter scale ambiguity.
@@ -130,31 +142,35 @@ No global optimum is guaranteed; these fits are intended for small asset sets.
 
 ### Empirical example: joint SPY and TLT returns
 
-Compare four joint distributions using the entire available common sample:
+Compare five joint distributions using the entire available common sample:
 
 ```cmd
-python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t azzalini-skew-t nig-skewed
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t azzalini-skew-t noncentral-t nig-skewed
 ```
 
 For the supplied data, this uses 5,833 paired simple daily returns from
-2002-07-31 through 2025-10-03. All four fits converged. The example run
-reported 17.6 seconds overall; runtime depends on hardware and software.
-Results below are rounded from the reported output.
+2002-07-31 through 2025-10-03. All five fits converged. The combined fit-and-risk
+run below reported 21.95 seconds overall; runtime depends on hardware and
+software. Results below are rounded from the output in `vares_results.txt`.
 
 | Model | Free parameters | Log likelihood | AIC | BIC | Degrees of freedom | Return correlation |
 |---|---:|---:|---:|---:|---:|---:|
 | Normal | 5 | 36,986 | -73,963 | -73,929 | — | -0.311 |
 | Student-t | 6 | 38,233 | -76,454 | -76,414 | 3.5443 | -0.275 |
 | Azzalini skew-t | 8 | 38,251 | -76,487 | -76,433 | 3.5462 | -0.270 |
+| Noncentral-t | 8 | 38,252 | -76,488 | -76,434 | 3.5489 | -0.270 |
 | Skewed NIG | 8 | 38,232 | -76,448 | -76,395 | — | -0.273 |
 
 Lower AIC/BIC is better. Heavy tails matter substantially: Student-t improves
-AIC over normal by approximately 2,491 points. Azzalini skew-t is preferred
-overall, improving on symmetric Student-t by approximately 33 AIC points and
-19 BIC points after accounting for its two additional parameters.
+AIC over normal by approximately 2,491 points. Both skewed t formulations
+improve on symmetric Student-t by approximately 33–34 AIC points and 19–20
+BIC points after accounting for their two additional parameters. Noncentral-t
+ranks first, but its advantage over Azzalini skew-t is only about one AIC/BIC
+point. The criteria favor allowing skewness but provide little basis for
+choosing between these two formulations.
 
 The estimated degrees of freedom barely change when skewness is added, so
-skewness does not remove the need for heavy tails. Both fitted t models have
+skewness does not remove the need for heavy tails. All three fitted t models have
 finite variances but infinite fourth moments. The heavy-tailed models give
 similar fitted return correlations, around -0.27, compared with -0.31 under
 normality. For skewed models, the reported location vector is not generally
@@ -164,6 +180,78 @@ These are unconditional fits across roughly 23 years. Changes in volatility
 and correlation regimes can contribute to the apparent heavy tails. The
 comparison supports skew-t as a description of this pooled sample, not a
 claim that it provides superior conditional or out-of-sample risk forecasts.
+
+### Fit and report portfolio VaR/ES in one run
+
+Add weights to compute portfolio risk directly from each fitted model, along
+with an empirical historical row using the exact same complete-case sample:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t azzalini-skew-t noncentral-t nig-skewed --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995
+```
+
+This reports one-day VaR and expected shortfall for a 60% stock / 40% bond
+portfolio because the supplied data contain daily returns. More generally,
+risk is per input return period. Values are printed as positive-loss
+percentages: `VaR(c)=-Q(1-c)` and `ES(c)=-E[R | R<=Q(1-c)]` for continuous
+fitted distributions. Negative loss estimates are not clipped to zero.
+
+For the same 5,833 observations, the run produced the following one-day losses
+as percentages of portfolio value. All model risk calculations completed
+successfully; the empirical row is calculated directly from portfolio returns.
+
+| Model | VaR 95% | ES 95% | VaR 97.5% | ES 97.5% | VaR 99% | ES 99% | VaR 99.5% | ES 99.5% |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Normal | 1.11% | 1.40% | 1.33% | 1.59% | 1.58% | 1.82% | 1.76% | 1.98% |
+| Student-t | 0.93% | 1.48% | 1.25% | 1.90% | 1.75% | 2.56% | 2.20% | 3.17% |
+| Azzalini skew-t | 1.01% | 1.64% | 1.37% | 2.12% | 1.95% | 2.88% | 2.47% | 3.59% |
+| Noncentral-t | 1.01% | 1.65% | 1.38% | 2.12% | 1.95% | 2.89% | 2.48% | 3.61% |
+| Skewed NIG | 1.04% | 1.60% | 1.41% | 1.99% | 1.93% | 2.55% | 2.34% | 2.99% |
+| Empirical | 1.04% | 1.62% | 1.38% | 2.04% | 1.86% | 2.72% | 2.32% | 3.38% |
+
+The two skewed t formulations give nearly identical portfolio risk estimates,
+consistent with their near tie in AIC/BIC. Both give higher downside risk than
+symmetric Student-t: at 99.5%, ES is 3.59–3.61%, versus 3.17% for Student-t.
+
+Tail assumptions matter most at the more extreme levels. Normal ES at 99.5%
+is only 1.98%, compared with empirical ES of 3.38% and approximately 3.60%
+under the skewed t models. Normal VaR is not uniformly lower, however: its
+95% VaR is the largest in this comparison. A model's central quantiles and
+extreme tails need not have the same relative ordering.
+
+Skewed NIG and the skewed t models have similar 99% VaR, but diverge more in
+the deeper tail: NIG's 99.5% ES is 2.99%. The empirical row is a useful
+in-sample reference, not independent validation or proof of which model will
+forecast future losses best.
+
+The default confidence levels with weights are `.95 .975 .99 .995`.
+`--weights-file` accepts the existing `symbol,weight` CSV format. Weights are
+used without normalization; unspecified fitted assets get zero weight. Shorts
+and non-unit net exposure are allowed, with no cash return or financing costs
+added. Unknown weight symbols are rejected before fitting. Simple returns
+are required unless `--allow-log-linear-combination` explicitly requests a
+weighted sum of log returns, which is not the portfolio's log return.
+
+The existing fitted-family projection and tail-risk functions are reused,
+without fitting again. SDB families use the existing simulation approach;
+`--simulations`, `--seed`, and `--mc-batches` control those estimates and the
+risk CSV includes their Monte Carlo diagnostics. Boundary or unsuccessful
+fits remain visible as skipped rows; numerical risk failures are reported
+rather than replaced with numbers. Any such fit/risk failure gives a nonzero
+exit status while available results are still saved.
+
+The empirical row uses linear interpolation for VaR and a fractional-weight
+mean of the worst returns for ES. Tail sample mass is printed: at 99.5%,
+5,833 observations give only 29.17 observations of tail mass, so empirical ES
+is noisy. Results are unconditional historical estimates, not forecasts
+conditioned on current volatility, and exclude parameter uncertainty.
+
+In addition to the usual fit JSON and summary CSV, this writes
+`joint_distribution_fits_portfolio_risk.csv` (numeric values in decimal return
+units). With a custom fit `--output`, the risk filename uses that stem;
+`--portfolio-output PATH.csv` overrides it. Each requested window gets its
+own model and empirical rows, dates, observation counts, and weights. Existing
+output files are replaced; input files and overlapping output paths are protected.
 
 ### Joint Laplace and GED definition
 
