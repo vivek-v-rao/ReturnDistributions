@@ -2,13 +2,6 @@
 
 ## Reusable univariate fitting package
 
-Install for local development (changes are immediately visible to other projects
-using the same Python interpreter):
-
-```cmd
-python -m pip install -e C:\python\codex\distributions\ReturnDistributions
-```
-
 Run without installation from this directory:
 
 ```cmd
