@@ -1,5 +1,715 @@
 # ReturnDistributions
-Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`. To fit returns normalized by trailing exponentially weighted volatility set `normalize_vol_ewma = True`. Some distributions that generally fit returns well are the [Johnson's SU](https://en.wikipedia.org/wiki/Johnson%27s_SU-distribution), [Normal-Inverse Gaussian](https://en.wikipedia.org/wiki/Normal-inverse_Gaussian_distribution), and [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution). For [VXX](https://ipathetn.cib.barclays/details.app;instrumentId=341408) (which tracks VIX futures) and to a lesser extent SPY, distributions that allow for skew fit better. The canonical normal distribution fits the worst, because it is thin-tailed.
+
+## Reusable univariate fitting package
+
+Install for local development (changes are immediately visible to other projects
+using the same Python interpreter):
+
+```cmd
+python -m pip install -e C:\python\codex\distributions\ReturnDistributions
+```
+
+Run without installation from this directory:
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --output distribution_fits.csv
+python -m return_distributions spy_tlt_vxx.csv --symbols SPY --models normal student-t ged nig-symmetric nig-skewed --days 252 1260
+```
+
+The CSV's first column contains dates; remaining columns contain prices. Defaults
+are simple returns, all available history, and an estimated location. Missing
+prices are not filled and returns across missing prices are not bridged. Models
+use the same valid observations within an asset/window. `--input-type returns`
+accepts already-computed returns (the `--return-type` label must match their units).
+`--location 0` fixes location, not necessarily the mean of skewed distributions.
+`--show-plot` displays density and Q-Q plots (requires matplotlib).
+
+Default models: normal, student-t, laplace, ged, hyperbolic-symmetric,
+hyperbolic-skewed, nig-symmetric, nig-skewed. Other SciPy continuous distribution
+names are also accepted, with support suitability left to the caller. Hyperbolic
+fixes the generalized-hyperbolic parameter p=1; it is not hyperbolic secant.
+Symmetric hyperbolic/NIG fixes b=0. AIC/BIC count only free parameters.
+
+```python
+from return_distributions import fit_many, fitted_distribution
+
+fits = fit_many(returns, models=['normal', 'student-t', 'nig-symmetric', 'nig-skewed'])
+best = fits.loc[fits.status.eq('ok')].iloc[0]
+distribution = fitted_distribution(best)
+```
+
+The API accepts a finite one-dimensional array with at least eight nonconstant
+observations. It does not download data, modify pandas options, or open plots.
+Likelihoods and parameters are in original input units, although estimation is
+internally rescaled for numerical stability. Fits report optimizer status,
+warnings, runtime and errors; only confirmed successful fits receive ranks.
+Generic SciPy families whose optimizer status cannot be inspected are explicitly
+marked. Numerical optimization does not guarantee a global likelihood maximum.
+The CLI returns a nonzero exit code if any fit is not confirmed successful, while
+still writing all results for inspection.
+
+KS is descriptive only; ordinary fitted-sample KS p-values are omitted. Undefined
+moments remain undefined, rather than being approximated from truncated tails.
+AIC/BIC comparisons require the same observations and return units. Serial
+dependence and changing volatility limit unconditional iid interpretations.
+These are univariate fits, not a joint distribution or conditional VaR model.
+
+The original `xscipy_dist_returns.py` settings and broader catalog remain available;
+its estimation now calls the shared fitter. Older example output below predates
+the correction to fitted-sample KS p-values.
+
+Tests: `python -m unittest test_return_distributions -v`.
+
+## Joint distribution fits
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260
+```
+
+The multivariate implementation fits joint normal, Student-t, Laplace, GED, symmetric/skewed
+hyperbolic and symmetric/skewed NIG distributions, not independent marginals. All use the
+same complete-case sample for each requested window. Price gaps are never filled.
+`--input-type returns`, `--return-type log`, `--location 0`, `--max-iterations`
+and `--output joint_distribution_fits.json` are supported. The JSON contains
+locations, scatter and covariance matrices, symbol order, dates, diagnostics,
+and optimization attempts; the accompanying CSV contains the comparison table.
+Files with these output names are replaced on a subsequent run.
+
+```python
+from return_distributions import fit_joint, joint_distribution
+
+fit = fit_joint(common_returns.to_numpy(), 'student-t')
+model = joint_distribution(fit)
+log_density = model.logpdf(new_returns)
+```
+
+The Student-t model estimates one common df, a location vector, and a full
+positive-definite scatter matrix using a Cholesky parameterization. Three
+initial df values (3, 8, 30) are tried; the best converged likelihood is retained.
+Optimization is performed on rescaled returns and reported in original units.
+Normal fitting uses the analytic MLE (covariance denominator N, not N-1).
+
+Student-t covariance is scatter multiplied by df/(df-2), and is unavailable
+when df <= 2. The mean is unavailable when df <= 1. A normalized scatter matrix
+is printed but must not be interpreted as Pearson correlation when variance
+does not exist. Estimated df is bounded to [0.1, 100000] and log-Cholesky diagonals
+to [-12, 12] in standardized units; solutions at numerical bounds are flagged
+and unranked. Nonconverged and failed fits are retained, also unranked.
+
+Use small asset sets initially: unrestricted matrix parameter counts grow
+quadratically. Constant or linearly dependent assets are rejected rather than
+silently regularized. AIC/BIC comparisons apply within a window, not across
+windows. Fits assume iid observations and are not conditional risk forecasts.
+The default now fits all twelve joint models. Select a smaller set with, for example:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --models normal student-t nig-symmetric nig-skewed
+```
+
+Hyperbolic/NIG models use the normal variance-mean mixture
+`X = location + W*gamma + sqrt(W)*L*Z`, where `W ~ GIG(lambda, chi=1, psi)`
+and `scatter = L L'`. Fixing chi=1 resolves the mixing/scatter scale ambiguity.
+Symmetric fits fix the entire gamma vector to zero. Skewed models estimate one
+gamma per asset. Mean equals `location + E[W]*gamma`; covariance equals
+`E[W]*scatter + Var[W]*gamma*gamma'`. The printed return correlation uses this
+full covariance, not just normalized scatter. JSON contains both matrices,
+population moments, gamma, lambda, chi and psi. `joint_distribution(fit)` supplies
+`logpdf`, `pdf`, `rvs`, `mean()` and `cov()` for these GH fits.
+
+We use the conventional d-dimensional hyperbolic definition
+`lambda=(d+1)/2`, not the alternative `lambda=1` family with hyperbolic margins.
+Thus hyperbolic joint marginals are generally GH, not univariate hyperbolic.
+NIG uses `lambda=-1/2` in all dimensions. See the
+[QRM GHYP documentation](https://search.r-project.org/CRAN/refmans/QRM/html/GHYP.html)
+for the mixture and dimensional conventions.
+
+GH fitting uses scaled Bessel functions for stable log densities and starts at
+psi=0.2, 2, 20; skewed fits also start at the nested symmetric fit. Log psi is
+bounded to [-12,12], as are the log-Cholesky diagonals in standardized units.
+Boundary fits are flagged and unranked; these can signal limiting distributions
+or poorly identified parameters. Only free parameters count in AIC/BIC.
+No global optimum is guaranteed; these fits are intended for small asset sets.
+
+### Joint Laplace and GED definition
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models normal laplace ged
+```
+
+Both use the **elliptical power-exponential** family with density
+
+`f(x) = p*Gamma(d/2)/(2*pi^(d/2)*Gamma(d/p)*sqrt(det(S))) * exp(-q^(p/2))`,
+where `q=(x-mu)' S^-1 (x-mu)`. Laplace fixes power p=1; GED estimates p.
+At p=2 this is normal with covariance S/2. At d=1 it exactly matches
+`scipy.stats.gennorm(p, loc=mu, scale=sqrt(S))`, including Laplace at p=1.
+This is the radial/elliptical Laplace definition, **not** the alternative
+exponential normal-mixture multivariate Laplace. See the
+[power-exponential distribution study](https://www.mdpi.com/2227-7390/8/11/1918)
+for the elliptical family.
+
+Mean is mu and covariance is `S*Gamma((d+2)/p)/(d*Gamma(d/p))`. All positive
+p have finite moments. JSON stores both scatter S and actual covariance; the
+summary prints `power`. `joint_distribution(fit)` supports `logpdf`, `pdf`,
+`rvs`, `mean()` and `cov()`. Sampling uses a uniform random direction and
+radius R such that `R^p ~ Gamma(d/p,1)`.
+
+GED starts at powers 0.75, 1, 2, 3 and the fitted Laplace solution. The estimated
+power is bounded to [0.25,10] and log-Cholesky diagonals to [-12,12] in
+standardized units. Boundary fits are flagged and unranked. The likelihood is
+nonsmooth at zero residual radius for p <= 1; optimizer convergence does not
+prove a global optimum. Both models are symmetric, with freely estimated or
+optionally fixed location and a full dependence matrix.
+
+In d>1, marginals and weighted portfolio returns generally are **not** univariate
+GED/Laplace. Future portfolio VaR/ES calculations must use suitable projection
+integration or simulation, not plug the joint power into a univariate GED.
+
+Tests: `python -m unittest test_joint_power test_joint_gh test_joint_distributions test_return_distributions -v`.
+
+## Simulation validation
+
+Quick check (one generated sample from each of the twelve joint families, every
+sample fitted with all twelve candidate models):
+
+```cmd
+python distribution_simulation.py --replications 1 --sample-sizes 100
+```
+
+A more meaningful study:
+
+```cmd
+python distribution_simulation.py --replications 100 --sample-sizes 250 1000 --seed 12345
+```
+
+For speed, restrict generators/candidates:
+
+```cmd
+python distribution_simulation.py --generators normal student-t --models normal student-t laplace ged --replications 20 --sample-sizes 500
+```
+
+`--dimensions` defaults to 2 for presets. Presets use a common population mean
+and covariance, with Student-t df=6, GED power=1.25, GH psi=2, moderate mixed-sign
+skewness, and the documented symmetric/Laplace restrictions. The exact truth
+parameters are saved, not estimated from the simulated samples. To simulate
+from previous fits instead:
+
+```cmd
+python distribution_simulation.py --truth-file joint_distribution_fits.json --replications 20 --sample-sizes 500
+```
+
+All selected status-ok fits in that file are used, each as a distinct truth ID
+(including separate windows for the same family). Dimensions come from the file.
+`--generators` filters the file by family; boundary/nonconverged truths are rejected.
+Candidates always estimate locations freely, even if a saved truth fixed its location.
+
+The runner uses independently seeded replications, a shared sample across
+candidates within each replication, and approximately 5% progress updates with ETA.
+Change `--max-iterations` to control fitting effort. No prices are downloaded.
+
+Under `--output-dir simulation_output` it saves config/truth JSON files, all fitted
+parameters in `fits.json`, per-fit diagnostics in `fits.csv`, model selection in
+`selection.csv`, and per-parameter recovery/summary CSVs. Outputs with the same
+names are overwritten, so use separate directories for separate studies.
+
+Selection denominators include **only replications with every candidate status ok**;
+failures and boundary fits are excluded and counted. AIC/BIC ties within 1e-8
+split selection credit. If there are no eligible comparisons, rates are n/a.
+Correct-family recovery reports mean estimate, bias, sample SD and RMSE for
+locations, shapes, skew vectors, scatter and derived means/covariances. It uses
+successful interior correct-family fits, independently of other candidates;
+failed fits and unavailable moments are counted. Fixed quantities such as
+Laplace power are included for audit, not evidence of parameter recovery.
+Rates and recovery are conditional on convergence, so always inspect status counts.
+
+Small studies are smoke tests, not evidence of reliable identification. Nested
+families can select their simpler special cases; one preset per family does not
+establish general performance across tail/skew/dependence parameters.
+
+Tests: `python -m unittest test_distribution_simulation test_joint_power test_joint_gh test_joint_distributions test_return_distributions -v`.
+
+## Portfolio distributions from joint fits
+
+```cmd
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4
+python portfolio_distribution.py joint_distribution_fits.json --weights-file portfolio_weights.csv --quantiles .01 .05 .5 .95 .99 --show-plot
+```
+
+The weights file has `symbol,weight` columns with decimal weights. Symbols are
+matched case-insensitively to each fit's saved order; omitted assets receive zero.
+Duplicate, nonfinite or unknown weights are rejected. Short/leveraged weights
+are permitted and never normalized. No cash return, financing cost, tax or
+rebalancing assumptions are silently added. All status-ok fits/windows in the
+input are projected; `--models` selects a subset. Other fit statuses are skipped
+with a warning. `--output` defaults to `portfolio_distributions.csv` and replaces
+that file when rerun; source data cannot be overwritten.
+
+The table reports mean, volatility and return quantiles (not positive loss VaR).
+All are per input return period, **not annualized**; CSV values use decimal return
+units and include fit index, model, source dates and the weights used. Undefined
+Student-t moments remain unavailable. The optional density plot requires
+matplotlib; a zero-weight combination is a point mass at zero, not a density.
+
+```python
+from return_distributions import project_distribution
+
+portfolio = project_distribution(saved_fit, [0.6, 0.4])  # saved symbol order
+portfolio.mean(), portfolio.std(), portfolio.ppf([.01, .05, .95, .99])
+```
+
+Normal/Student-t project their location and scatter with `w' mu` and `w' S w`;
+Student-t df is unchanged. Hyperbolic/NIG also project gamma as `w' gamma`,
+preserving lambda, chi=1 and psi. The resulting univariate GH is evaluated with
+SciPy (`b=gamma_portfolio/sqrt(S_portfolio)`, `a=sqrt(psi+b*b)`,
+`scale=sqrt(S_portfolio)`). In particular, projected hyperbolic is generally GH,
+not ordinary hyperbolic; NIG stays NIG.
+
+Elliptical Laplace/GED projections retain the **original joint dimension**.
+Their CDF, survival function and density use deterministic one-dimensional
+quadrature; quantiles use root-finding. The radial representation is
+`R^power ~ Gamma(d/power,1)` with a uniform sphere direction. Numerical
+integration failures are reported rather than silently accepted. One-dimensional
+GED and power=2 use the corresponding SciPy distributions directly. Sampling
+is also supported by the returned projection objects.
+
+Simple asset returns project to a portfolio return with beginning-of-period
+weights. Log-return fits are rejected unless `--allow-log-linear-combination`
+(API: `allow_log=True`) is given; then the output is only a weighted sum of asset
+log returns, **not** the portfolio log return. Forecast parameter uncertainty and
+conditional volatility changes are not included.
+
+Add positive-loss VaR and expected shortfall with:
+
+```cmd
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels .95 .99
+```
+
+At confidence c, `VaR = -Q(1-c)` and `ES = -E[R | R <= Q(1-c)]`.
+The columns `var_0.95`, `es_0.95`, etc. use decimal returns in CSV and percentages
+on screen; these are per input period, not annualized. Negative risk measures
+(possible when even tail returns are positive) are not clipped to zero.
+Quantile columns retain their original return sign convention.
+
+Normal and Student-t ES use analytic formulas. GH/NIG and one-dimensional GED
+use rescaled tail-density integration. Elliptical Laplace/GED use radial partial
+moment quadrature, avoiding repeated integration of projected quantiles. CSV
+also records ES method and status. Student-t ES is mathematically infinite
+for df <= 1 (printed `infinite`, stored `inf`); ES remains finite for 1 < df <= 2
+even though variance is unavailable. Numerical integration failures raise an
+error rather than masquerading as infinite ES. Zero-weight portfolios have
+zero VaR and ES. No ES is added unless `--risk-levels` is supplied.
+
+API: `portfolio_risk(project_distribution(fit, weights), confidence=.99)` returns
+`var`, `es`, `es_status`, and `es_method`. Import it from `return_distributions`.
+
+Tests: `python -m unittest test_tail_risk test_portfolio_projection -v`.
+
+## Gaussian and Student-t copulas
+
+```cmd
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260
+```
+
+This fits each asset's marginal on the same complete-case return sample and
+then fits Gaussian and Student-t copulas to the marginal CDF scores. The default
+marginal is Student-t; all asset marginal parameters, including their df, are
+separate. The t copula's additional shared df controls **dependence**, not the
+marginal distributions. Arbitrary asset sets are supported, but start with small
+sets: a copula correlation matrix has d(d-1)/2 free parameters.
+
+Choose marginal candidates or an explicit per-asset override:
+
+```cmd
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --marginal-models normal student-t ged nig-skewed --criterion bic --marginal TLT=student-t
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --marginal-mode ranks
+```
+
+`--marginal-models` selects the successful marginal with best AIC (or `--criterion
+bic`) separately for each asset. `--marginal SYMBOL=MODEL` can be repeated.
+Rank mode uses average ranks/(N+1), prints duplicate counts, and fits copula
+pseudo-likelihoods only; it does not define parametric return marginals. Ties
+can distort continuous-copula inference. No downloading is performed.
+
+`--copulas gaussian student-t`, `--input-type returns`, `--return-type log`,
+`--max-iterations` and `--output copula_fits.json` are supported. The summary CSV
+separates marginal log likelihood, copula log likelihood and plug-in total joint
+log likelihood. Copula criteria compare candidates using identical transforms;
+rank and fitted-CDF likelihoods are not directly comparable. Two-stage total
+AIC/BIC are descriptive plug-in criteria, **not** jointly maximized likelihood
+criteria; they do not penalize the marginal family search itself.
+
+CDFs are clipped to `[--cdf-clip, 1-cdf-clip]` (default 1e-10), with the count
+reported and saved. Likelihoods affected by clipping are numerical approximations;
+inspect sensitivity if many observations are clipped. The copula correlation
+is a latent normal/t correlation, not generally the Pearson correlation of
+returns. Unit diagonal and positive definiteness are enforced by row-normalized
+Cholesky factors (diagonal initially fixed to 1 for identification); free
+off-diagonal entries are bounded to [-20,20]. Student-t copula df is bounded to
+[0.25,200] with starts 4,10,30. Boundary/nonconverged fits are explicitly labeled;
+a large-df boundary may indicate a nearly Gaussian copula.
+
+Saved JSON contains the selected marginal parameters in symbol order and all
+copula parameters. A marginal audit CSV retains all candidate marginal fits
+in fitted mode; rank mode does not write or update that audit file. Existing
+outputs with the selected names are overwritten. Reconstruct a parametric joint
+model for simulation or scoring as follows:
+
+```python
+import json
+from return_distributions import CopulaJoint
+
+record = json.load(open('copula_fits.json'))[0]
+joint = CopulaJoint(record)
+draws = joint.rvs(10000, random_state=123)
+portfolio_returns = draws @ weights  # simple returns; saved symbol order
+log_density = joint.logpdf(new_returns)
+```
+
+Scoring rejects marginal CDF roundoff endpoints rather than silently clipping
+extreme out-of-sample observations. For dependence-only simulations use
+`sample_copula(record['copula'], size=10000, random_state=123)` to obtain uniforms.
+The portfolio CLI also recognizes these copula records and uses Monte Carlo:
+
+```cmd
+python portfolio_distribution.py copula_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels .95 .99 --simulations 1000000 --seed 123
+python portfolio_distribution.py copula_fits.json --weights SPY=0.6 TLT=0.4 --stage joint-refined --risk-levels .99 --simulations 100000
+```
+
+`--stage` defaults to all and distinguishes two-stage, joint-refined, and
+two-stage-retained records. All windows are retained; `--models` filters copula
+families. Rank-only fits are rejected because they lack parametric marginals.
+Direct joint-family input still uses analytic/quadrature projections, not Monte
+Carlo. Log inputs retain the explicit linear-combination opt-in requirement.
+
+Copula simulations default to 100000 draws and seed 12345, with 20 independent
+batches (`--mc-batches`). Draw count, seed, stage, tail counts, ES status and
+Monte Carlo SEs are included in CSV. The same seed across fit records supplies
+common random numbers for comparisons. Reproducibility requires the same seed,
+batch count, draw count, fitted parameters and software environment. Memory is
+bounded by batches of joint draws plus the one-dimensional portfolio sample.
+GH marginal inverse CDF evaluation can be slow for large simulations.
+
+Portfolio mean is computed from marginal means; volatility is a simulation
+estimate when every held marginal has finite variance. Quantiles use empirical
+linear interpolation. ES integrates the empirical quantile function using a
+fractional weight at the tail boundary, rather than counting all tied observations.
+Fewer than 100 tail draws trigger a warning. Approximate MC SEs come from the
+variation of batch estimates divided by sqrt(batch count), and are unavailable
+when fewer than 10 expected tail observations occur per batch. ES SEs also require
+finite held-marginal variances. These errors exclude parameter/model uncertainty
+and may be unreliable for very heavy tails even when moments technically exist.
+
+Copula df does not determine portfolio moment existence: marginal tails do.
+If a nonzero-weight marginal lacks a finite mean (e.g. Student-t df <= 1), finite
+portfolio ES is not established and ES is reported as unavailable, rather than
+publishing a misleading finite sample estimate. This conservative rule does
+not attempt to prove cancellation of nonintegrable components. Zero-weight
+assets do not affect moment checks. A zero-weight portfolio has zero risk.
+Endpoint rounding in simulated uniforms is counted; it suppresses ES/MC SEs
+because it may truncate extreme tails. Nonfinite simulated returns cause an error,
+not silent draw deletion. The optional plot uses simulated histograms for copulas.
+
+### Joint maximum-likelihood refinement
+
+```cmd
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --joint-refine
+```
+
+This starts from the two-stage fit and simultaneously optimizes all marginal
+parameters and the copula correlation/df against the **full return likelihood**.
+Marginal CDF scores are recomputed at every step, without clipping. Marginal
+families remain fixed; a t copula and t marginals still have separate degrees
+of freedom. This is not the restricted common-df multivariate-t model.
+
+The original two-stage record is always saved. A second record has stage
+`joint-refined` if optimization converges to an interior solution with likelihood
+at least as large as the starting likelihood; otherwise it is `two-stage-retained`
+with the original parameters. JSON contains convergence, boundary, iteration,
+runtime and candidate likelihood diagnostics. Summary CSV reports accepted
+improvement and joint AIC/BIC only for accepted refinements. Copula-only scores
+are not compared across stages because the marginal transforms change.
+Use `--max-iterations` to control both stages. Full joint refinement may be much
+slower, particularly for GH marginals whose CDFs require numerical integration.
+
+Supported marginal families are the eight defaults and their SciPy equivalents
+(`norm`, `t`, `laplace`, `gennorm`, `norminvgauss`, `genhyperbolic`). Shape/symmetry
+constraints are preserved. Marginal scales and GH shape gaps are log-transformed;
+the copula retains its positive-definite correlation parameterization. Marginal
+df bounds are [0.1,100000], GED power [0.1,10], free GH p [-20,20], log GH
+`a^2-b^2` [-24,24], and log marginal scale [-12,12] in standardized units.
+The seed must satisfy these bounds. Fixed locations from externally constructed
+seeds are not retained: this routine optimizes locations freely.
+
+Rank mode cannot be jointly refined. Failed/boundary seeds, clipped initial CDFs,
+or unsupported marginal families produce a warning and retain the original fit.
+Local convergence is not a guarantee of the global maximum; family-selection
+uncertainty remains outside the parameter-count penalty.
+
+API: `refine_joint(common_return_array, saved_copula_record, max_iterations=1000)`.
+The returned record can be passed directly to `CopulaJoint`.
+
+Tests: `python -m unittest test_copula_refinement test_copulas -v`.
+
+## Optional skew-Student-t families
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --models student-t jf_skew_t nct fernandez-steel azzalini
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --marginal-models student-t fernandez-steel azzalini --joint-refine
+```
+
+Fernandez-Steel (`fernandez-steel`, also `fs-skew-t`/`fs_skew_t`) and Azzalini-
+Capitanio (`azzalini`, also `azzalini-skew-t`/`azzalini_skew_t`) are optional,
+not added to the default univariate candidate set. Both have parameters
+`df, skewness, loc, scale`, count four free parameters, and reduce to Student-t
+when skewness=0. The `skewness` shape parameter is distinct from the reported
+`skew` moment. Location is generally **not the mean**, and scale is not SD.
+
+Fernandez-Steel uses k=exp(skewness), density `2/(k+1/k)*t_df(x/k)` to the right
+of standardized zero and `2/(k+1/k)*t_df(k*x)` to the left. The right/left
+probability masses are k^2/(1+k^2) and 1/(1+k^2). PDF/CDF/quantiles and
+simulation are implemented directly. See the
+[rugarch distribution documentation](https://faculty.washington.edu/ezivot/econ589/Introduction_to_the_rugarch_package.pdf)
+for the inverse-scale construction; our distribution is not standardized to
+mean zero and unit variance.
+
+Azzalini uses `2*t_df(x)*T_(df+1)(skewness*x*sqrt((df+1)/(df+x*x)))`.
+The CDF uses deterministic quadrature (with a separate stable large-df path) and the inverse CDF uses
+numerical root finding. Sampling directly uses a skew-normal/chi-square mixture.
+See the [Azzalini-Capitanio skew-t reference](https://www.statsmodels.org/v0.13.5/generated/statsmodels.sandbox.distributions.extras.ACSkewT_gen.html).
+Inverse-CDF copula simulation and joint refinement may be substantially slower
+than ordinary Student-t or Fernandez-Steel. No statsmodels dependency is added.
+
+For both families, moments of order r require df>r. Undefined mean/skew/kurtosis
+remain n/a; variance is infinite for 1<df<=2. These checks propagate to copula
+portfolio ES safeguards. Moment calculations use the analytic raw moments,
+not truncated numerical-tail approximations.
+
+Joint refinement now also supports `jf_skew_t` and `nct`, alongside these new
+families. Jones-Faddy shape parameters a,b are positive/log-transformed (bounds
+[0.05,50000]); noncentrality is bounded to [-100,100]. FS skew is bounded to
+[-8,8] during joint refinement and Azzalini skew to [-100,100]. The existing
+df/scale bounds and non-worsening acceptance checks apply. Univariate FS rejects
+|skew|>=100 as a numerical safety limit. These are univariate/copula-marginal
+families. A dedicated multivariate Azzalini--Capitanio model is also available below.
+
+### Multivariate Azzalini--Capitanio skew-t
+
+```text
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models student-t azzalini-skew-t
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+`azzalini-skew-t` fits location, full positive-definite scatter, a shape vector
+`alpha`, and one shared degrees-of-freedom parameter by joint maximum likelihood.
+It is included in the joint CLI's default model list. This is a direct joint
+distribution, not a t copula with separately fitted skew-t marginals.
+The shape vector uses marginal scatter scales in the standard Azzalini--Capitanio
+parameterization. Neither location nor scatter is generally the mean or covariance.
+JSON records contain both when they exist: mean requires df > 1, covariance df > 2.
+
+Fitting uses standardized input, a Cholesky scatter parameterization, and three
+skewness starts seeded from a symmetric Student-t fit. These mitigate but do not
+eliminate local optima. Degrees of freedom are bounded to [0.1, 100000], whitened
+shape coordinates to [-30, 30], and log Cholesky diagonals to [-12, 12]. Boundary
+and nonconverged fits are flagged and excluded from ranking and portfolio projection.
+`--location` fixes the location, not the expected return.
+
+Linear combinations have an exact univariate Azzalini skew-t distribution with
+the same df and appropriately transformed shape. Portfolio quantiles use numerical
+CDF inversion; expected shortfall uses tail integration and is infinite for df <= 1.
+Finite ES remains supported when 1 < df <= 2 despite infinite variance. Long and
+short weights are supported without normalization. The simulation study also
+supports this family and reports recovery of its alpha vector.
+
+Tests: `python -m unittest test_skew_t test_joint_skew_t -v`.
+
+### Generalized hyperbolic with estimated lambda
+
+```text
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models nig-symmetric nig-skewed hyperbolic-symmetric hyperbolic-skewed gh-symmetric gh-skewed
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+`gh-symmetric` and `gh-skewed` estimate the GIG mixing shape `lambda` instead
+of fixing it to -1/2 (NIG) or (dimension+1)/2 (hyperbolic). Each adds exactly one
+free parameter to its corresponding restricted model; AIC/BIC count it.
+Symmetric fits keep gamma=0. Both support fixed `--location`, exact GH portfolio
+projections, numerical VaR/ES, and simulation/recovery studies, including lambda
+recovery. They are included in the default joint model list.
+
+The mixture remains `W ~ GIG(lambda, chi=1, psi)`: fixing chi identifies the
+scale. Lambda is bounded to [-20,20], while log psi and log Cholesky diagonals
+remain bounded to [-12,12]. Fits at any boundary are flagged and unranked.
+Positive psi and chi imply finite moments; neither location nor scatter should
+be confused with the mean or covariance for skewed fits.
+
+Starts include the fitted NIG and hyperbolic restrictions, several psi values,
+and the fitted symmetric GH model for skewed GH. Fitting can therefore take
+longer than the restricted models. More starts do not guarantee the global
+maximum. Lambda and psi may be weakly identified; prefer predictive evaluation
+over interpreting small in-sample improvements as evidence of a better model.
+The finite bounds do not implement exact limiting families such as variance gamma.
+
+### Multivariate noncentral Student-t
+
+```text
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models student-t azzalini-skew-t noncentral-t
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+`noncentral-t` models `X = location + (Z + delta)/sqrt(W/df)`, where
+`Z ~ N(0, scatter)` and the shared `W ~ chi-square(df)` are independent.
+This is the noncentral (Kshirsagar) construction, with an additional location
+parameter, not merely a shifted symmetric t. See the
+[mvtnorm definition](https://search.r-project.org/CRAN/refmans/mvtnorm/html/pmvt.html).
+`delta` is stored and printed in original return units, not as a standardized
+univariate noncentrality. Setting delta to zero recovers the symmetric joint t.
+
+Location, full scatter, delta, and one shared df are estimated jointly. The model
+has the same free-parameter count as Azzalini skew-t. It uses the shared
+multi-start fitter and the same bounds, with [-30,30] bounds applying to the
+whitened noncentrality coordinates. Fixed `--location` is supported, but does not
+fix the mean. Location and noncentrality can be weakly identified, particularly
+at high df; convergence does not remove this uncertainty. Inspect boundary flags
+and compare out-of-sample performance before interpreting the skew parameters.
+
+The multivariate density reduces algebraically to a univariate noncentral-t
+density ratio. Mode-centered positive quadrature handles difficult numerical
+cases. Portfolio projections remain noncentral t: location is `w'location`,
+scale is `sqrt(w'scatter w)`, noncentrality is `w'delta/scale`, and df is unchanged.
+CDFs and quantiles use SciPy; safeguarded densities are used for ES integration.
+Mean exists for df > 1 and covariance for df > 2; ES is infinite for df <= 1.
+JSON includes derived means/covariances when defined, as well as all fitted
+parameters. The model is included in the default joint model list and supported
+by the parameter-recovery simulation study.
+
+Tests: `python -m unittest test_joint_nct -v`.
+
+### Experimental Sahu--Dey--Branco (SDB) models
+
+```text
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models student-t azzalini-skew-t sdb-skew-normal sdb-skew-t --sdb-cdf-points 512
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99 --simulations 100000 --seed 12345 --mc-batches 20
+```
+
+`sdb-skew-normal` and `sdb-skew-t` are optional experimental models for at most
+five assets; they are **not in the default joint or simulation model lists**.
+They implement `X = mu + (diag(delta)|U| + Z)/sqrt(W/df)`, with independent
+`U ~ N(0,I)`, `Z ~ N(0,Sigma)`, and `W ~ chi-square(df)`. The normal version
+omits the denominator. Each asset has its own half-normal skew contribution;
+the t version retains a shared volatility scale. These are not supersets of
+Azzalini--Capitanio skew-t. See
+[Sahu, Dey & Branco (2003)](https://www.southampton.ac.uk/~sks/research/papers/sahudeybranco.pdf).
+
+The saved `scatter` is the residual Gaussian Sigma, not the covariance of X and
+not the base elliptical density's `Omega = Sigma + diag(delta**2)`. `delta` is
+in original return units. Derived means and covariances are saved separately.
+Skew-t means require df > 1; covariances require df > 2. Parameter counts are
+`2*d + d*(d+1)/2` for skew-normal and one more for skew-t when location is free.
+`--location` fixes mu, not the mean. Fitting standardizes each column and uses
+three starts. Standardized delta is bounded to [-10,10], log Cholesky diagonals
+to [-8,8], and t degrees of freedom to [0.3,200]. Boundary fits are flagged.
+
+Multivariate CDFs use conditional-normal integration with a fixed scrambled
+Sobol grid (plus the chi-square mixture for t). Reusing points makes likelihood
+optimization reproducible rather than drawing fresh random numbers each call.
+`--sdb-cdf-points` must be a power of two from 64 to 16384 (default 512);
+`--sdb-seed` defaults to 12345. One-dimensional CDFs use SciPy directly.
+
+Every fit is audited at four times the fitting points using two new scramble
+seeds. The maximum total log-likelihood change must be <=0.1, and the maximum
+individual log-density change <=0.02, both versus the fitting grid and between
+audit grids. Otherwise status is `cdf_unstable`: no ranking or portfolio risk.
+These are numerical diagnostics, not rigorous error bounds or proof that the
+optimum is stable. Increase `--sdb-cdf-points` and refit to check sensitivity,
+especially before interpreting small AIC differences. Saved likelihood/AIC/BIC
+use the first audited grid, whose points/seed are saved for reconstruction.
+Detailed audit diagnostics are saved in JSON and printed; failures produce a
+nonzero fit-CLI exit code. Fitting can be substantially slower than Azzalini t.
+
+General portfolio sums are not ordinary univariate skew-t distributions.
+The portfolio CLI therefore draws directly from the fitted SDB latent model,
+without a CDF approximation, and reports simulated quantiles, VaR, ES and
+independent-batch Monte Carlo standard errors. Mean and volatility are analytic
+when finite. Weights can be negative and are not normalized. ES is infinite for
+nonzero portfolios with df <= 1; its MC standard error is withheld when df <= 2.
+Too few observations in batch tails also suppress MC errors. An all-zero
+portfolio has zero risk even when asset moments do not exist. Log-return sums
+require the existing explicit opt-in. These errors exclude parameter uncertainty.
+
+API: `fit_joint(data, 'sdb-skew-t', sdb_points=512, sdb_seed=12345)`;
+`joint_distribution(fit)` supports density, moments and sampling;
+`simulate_joint_portfolio(fit, weights, simulations=100000)` returns metrics and
+portfolio draws. `project_distribution` rejects nonzero SDB sums, rather than
+silently substituting an Azzalini distribution. The simulation-study CLI accepts
+SDB families explicitly via `--generators`/`--models`, using default CDF controls.
+
+Tests: `python -m unittest test_joint_sdb -v`.
+
+### Optional slash and skew-slash mixtures
+
+```text
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models student-t azzalini-skew-t slash-normal skew-slash-normal slash-t skew-slash-t
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+The four slash families are opt-in; the default model list is unchanged. All use
+`X = location + Y/U**(1/q)` with one shared independent `U ~ Uniform(0,1)` and a
+zero-location multivariate normal, Azzalini skew-normal, Student-t, or Azzalini
+skew-t Y. The t variants have one shared `df`. The shape vector `alpha` uses our
+existing Azzalini parameterization. `scatter` describes Y, not the covariance of
+X. The location is outside random scaling and is not generally the mean.
+
+This construction is based on
+[Tan, Tang & Peng (2015)](https://link.springer.com/article/10.1186/s40488-015-0025-9),
+but densities, CDFs and moments are derived from the mixture rather than copied
+from its printed formulas. In particular, for a zero-location standardized
+scalar mixture the CDF is `integral_0^1 F_Y(x*u**(1/q)) du`. It is not weighted
+by the multivariate density Jacobian. We consistently use an outer location for
+both symmetric and skewed models, avoiding the paper's differing location
+conventions across definitions.
+
+As q tends to infinity, each family tends to its base distribution. The t
+families tend to their normal-base counterparts as df increases. Finite absolute
+moments of order p require q>p and, for t bases, df>p. Mean/ES therefore require
+both relevant tail parameters above 1; covariance requires both above 2.
+Undefined moments remain unavailable and ES is reported as infinite when
+appropriate. For finite moments, `E[U**(-p/q)] = q/(q-p)` supplies the multiplier;
+covariance includes the change in the squared mean for skewed bases.
+
+Joint maximum likelihood uses three starts, standardized data, and a Cholesky
+scatter matrix. q is bounded to [0.3,10000], df to [0.3,1000], whitened skew
+coordinates to [-15,15], and log Cholesky diagonals to [-10,10]. `--location`
+fixes the outer location. The t/slash parameters can be weakly identified;
+boundary fits are flagged and unranked, not silently converted to base models.
+Each slash model adds one parameter to its base family, counted in AIC/BIC.
+
+Density integration uses a normalized Gauss-Jacobi rule for the exact power
+weight, implemented without overflowing its normalization at large q.
+`--slash-quadrature-points` sets the fitting order (integer 16--256, default 64).
+Fitted densities are checked at four times that order. A total log-likelihood
+change exceeding 0.1 or an individual log-density change exceeding 0.02 gives
+status `quadrature_unstable`, excluded from ranking and portfolio risk. JSON
+records retain audit details and the audited order used for the reported
+likelihood. This audit is diagnostic, not a rigorous global error bound; increase
+the order and refit to assess sensitivity. Frozen joint densities use the saved
+quadrature order, so accuracy far beyond the fitted sample should also be checked.
+
+Portfolio sums stay in a univariate slash-mixture family. The portfolio CLI
+uses adaptive one-dimensional integration for CDFs/densities, numerical quantile
+inversion, and a truncated-moment integral for ES; simulation is not required.
+This also works for finite ES with infinite variance. Short weights and the
+existing explicit log-return opt-in are supported. Zero weights give zero risk.
+The simulation-study CLI accepts the four names explicitly and reports recovery
+of q as well as the other parameters; it uses default fitting quadrature controls.
+
+API: `fit_joint(data, 'skew-slash-t', slash_points=64)`,
+`joint_distribution(fit)`, `project_distribution(fit, weights)` and
+`portfolio_risk(projected, confidence=.99)`.
+Tests: `python -m unittest test_joint_slash -v`.
+
+## Original examples
+
+Fit many probability distributions from SciPy to asset returns and rank them. Run with `python xscipy_dist_returns.py`. To fit returns normalized by trailing exponentially weighted volatility set `normalize_vol_ewma = True`. Some distributions that generally fit returns well are the Johnson SU, Normal Inverse Gaussian, and Student's t. For VXX (which tracks VIX futures) and to a lesser extent SPY, distributions that allow for skew fit better. The canonical normal distribution fits the worst, because it is thin-tailed.
 ![Alt text](/spy_log_returns.png)
 ![Alt text](/vxx_log_returns.png)
 ```
@@ -10,53 +720,265 @@ normalize_vol_ewma: False
   symbol     #obs   median     mean       sd     skew     kurt      min      max
      SPY     8226   0.0007   0.0004   0.0118  -0.2472  11.3842  -0.1159   0.1356
 
-              name  k     loglik         aic         bic     ks   ks_p     skew      kurt     df       a       b       p      q   beta  kappa    loc  scale  fit_sec
-         johnsonsu  4 26058.7336 -52109.4672 -52081.4070 0.0125 0.1491  -0.7175   20.6240    NaN  0.1115  1.0780     NaN    NaN    NaN    NaN 0.0016 0.0079   0.0671
-      norminvgauss  4 26057.9726 -52107.9453 -52079.8851 0.0098 0.4051  -0.5320    7.5154    NaN  0.4231 -0.0486     NaN    NaN    NaN    NaN 0.0013 0.0075   5.3194
-     genhyperbolic  5 26057.9731 -52105.9461 -52070.8709 0.0098 0.4078  -0.5300    7.4874    NaN  0.4235 -0.0485 -0.4948    NaN    NaN    NaN 0.0013 0.0075   5.7247
-         jf_skew_t  4 26040.9151 -52073.8302 -52045.7700 0.0147 0.0565 -27.5217 1913.0402    NaN     NaN     NaN  1.2207 1.3441    NaN    NaN 0.0015 0.0068   0.1196
-                 t  3 26030.7392 -52055.4783 -52034.4332 0.0159 0.0312      NaN       NaN 2.7299     NaN     NaN     NaN    NaN    NaN    NaN 0.0008 0.0069   0.4124
-           gennorm  3 26020.3859 -52034.7719 -52013.7267 0.0163 0.0255   0.0000    4.1215    NaN     NaN     NaN     NaN    NaN 0.8924    NaN 0.0007 0.0065   0.0304
-laplace_asymmetric  3 26006.7949 -52007.5898 -51986.5447 0.0192 0.0045  -0.1669    3.0186    NaN     NaN     NaN     NaN    NaN    NaN 1.0402 0.0010 0.0078   0.0163
-           laplace  2 26001.1858 -51998.3717 -51984.3415 0.0167 0.0206   0.0000    3.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0078   0.0105
-         hypsecant  2 25887.4066 -51770.8132 -51756.7830 0.0312 0.0000   0.0000    2.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0067   0.0214
-          logistic  2 25731.7071 -51459.4141 -51445.3840 0.0468 0.0000   0.0000    1.2000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0057   0.0147
-          skewnorm  3 24922.4291 -49838.8583 -49817.8131 0.0883 0.0000  -0.1314    0.0584    NaN -0.9814     NaN     NaN    NaN    NaN    NaN 0.0082 0.0141   0.0935
-              norm  2 24872.3587 -49740.7173 -49726.6872 0.0941 0.0000   0.0000    0.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0004 0.0118   0.0076
+              name  k     loglik         aic         bic     ks   ks_p     skew      kurt     df      a       b       p      q   beta  kappa    loc  scale  fit_sec
+         johnsonsu  4 26058.7336 -52109.4672 -52081.4070 0.0125 0.1491  -0.7175   20.6240    NaN 0.1115  1.0780     NaN    NaN    NaN    NaN 0.0016 0.0079   0.0659
+      norminvgauss  4 26057.9726 -52107.9453 -52079.8851 0.0098 0.4051  -0.5320    7.5154    NaN 0.4231 -0.0486     NaN    NaN    NaN    NaN 0.0013 0.0075   5.5003
+     genhyperbolic  5 26057.9731 -52105.9461 -52070.8709 0.0098 0.4078  -0.5300    7.4874    NaN 0.4235 -0.0485 -0.4948    NaN    NaN    NaN 0.0013 0.0075   5.6886
+         jf_skew_t  4 26040.9151 -52073.8302 -52045.7700 0.0147 0.0565 -27.5217 1913.0402    NaN    NaN     NaN  1.2207 1.3441    NaN    NaN 0.0015 0.0068   0.1184
+                 t  3 26030.7392 -52055.4783 -52034.4332 0.0159 0.0312      NaN       NaN 2.7299    NaN     NaN     NaN    NaN    NaN    NaN 0.0008 0.0069   0.4044
+           gennorm  3 26020.3859 -52034.7719 -52013.7267 0.0163 0.0255   0.0000    4.1215    NaN    NaN     NaN     NaN    NaN 0.8924    NaN 0.0007 0.0065   0.0312
+laplace_asymmetric  3 26006.7949 -52007.5898 -51986.5447 0.0192 0.0045  -0.1669    3.0186    NaN    NaN     NaN     NaN    NaN    NaN 1.0402 0.0010 0.0078   0.0163
+           laplace  2 26001.1858 -51998.3717 -51984.3415 0.0167 0.0206   0.0000    3.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0078   0.0104
+         hypsecant  2 25887.4066 -51770.8132 -51756.7830 0.0312 0.0000   0.0000    2.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0067   0.0215
+          logistic  2 25731.7071 -51459.4141 -51445.3840 0.0468 0.0000   0.0000    1.2000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0007 0.0057   0.0141
+              norm  2 24872.3587 -49740.7173 -49726.6872 0.0941 0.0000   0.0000    0.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0004 0.0118   0.0076
 
   symbol     #obs   median     mean       sd     skew     kurt      min      max
      TLT     5833   0.0005   0.0002   0.0091  -0.0197   3.3705  -0.0690   0.0725
 
-              name  k     loglik         aic         bic     ks   ks_p    skew      kurt     df       a       b       p      q   beta  kappa    loc  scale  fit_sec
-         johnsonsu  4 19342.8063 -38677.6126 -38650.9274 0.0127 0.3039 -0.2014    2.2886    NaN  0.1496  1.7589     NaN    NaN    NaN    NaN 0.0015 0.0134   0.0591
-     genhyperbolic  5 19342.8191 -38675.6381 -38642.2817 0.0146 0.1648 -0.2497 4023.8535    NaN  0.1481 -0.1481 -2.9873    NaN    NaN    NaN 0.0008 0.0180   5.7472
-                 t  3 19340.5051 -38675.0102 -38654.9963 0.0166 0.0805  0.0000    2.9928 6.0048     NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0074   0.3332
-      norminvgauss  4 19337.6525 -38667.3049 -38640.6198 0.0124 0.3245 -0.1760    1.8173    NaN  1.6941 -0.1292     NaN    NaN    NaN    NaN 0.0010 0.0117   2.8504
-          logistic  2 19327.5153 -38651.0306 -38637.6880 0.0162 0.0911  0.0000    1.2000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0049   0.0040
-         hypsecant  2 19325.1759 -38646.3518 -38633.0092 0.0170 0.0669  0.0000    2.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0003 0.0058   0.0065
-           gennorm  3 19306.3957 -38606.7914 -38586.7775 0.0170 0.0678  0.0000    1.2174    NaN     NaN     NaN     NaN    NaN 1.3348    NaN 0.0004 0.0094   0.0246
-laplace_asymmetric  3 19251.5413 -38497.0826 -38477.0687 0.0385 0.0000 -0.4129    3.1140    NaN     NaN     NaN     NaN    NaN    NaN 1.1038 0.0015 0.0067   0.0140
-         jf_skew_t  4 19244.9464 -38481.8928 -38455.2076 0.0207 0.0131 -8.6504 1411.1766    NaN     NaN     NaN  1.2972 1.3371    NaN    NaN 0.0005 0.0064   0.0892
-           laplace  2 19235.5430 -38467.0860 -38453.7435 0.0395 0.0000  0.0000    3.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0005 0.0068   0.0068
-          skewnorm  3 19149.0410 -38292.0819 -38272.0681 0.0351 0.0000 -0.0711    0.0258    NaN -0.7566     NaN     NaN    NaN    NaN    NaN 0.0051 0.0104   0.0824
-              norm  2 19143.7511 -38283.5023 -38270.1597 0.0350 0.0000  0.0000    0.0000    NaN     NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0091   0.0080
+              name  k     loglik         aic         bic     ks   ks_p    skew      kurt     df      a       b       p      q   beta  kappa    loc  scale  fit_sec
+         johnsonsu  4 19342.8063 -38677.6126 -38650.9274 0.0127 0.3039 -0.2014    2.2886    NaN 0.1496  1.7589     NaN    NaN    NaN    NaN 0.0015 0.0134   0.0602
+     genhyperbolic  5 19342.8191 -38675.6381 -38642.2817 0.0146 0.1648 -0.2497 4023.8535    NaN 0.1481 -0.1481 -2.9873    NaN    NaN    NaN 0.0008 0.0180   5.7937
+                 t  3 19340.5051 -38675.0102 -38654.9963 0.0166 0.0805  0.0000    2.9928 6.0048    NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0074   0.3458
+      norminvgauss  4 19337.6525 -38667.3049 -38640.6198 0.0124 0.3245 -0.1760    1.8173    NaN 1.6941 -0.1292     NaN    NaN    NaN    NaN 0.0010 0.0117   3.0330
+          logistic  2 19327.5153 -38651.0306 -38637.6880 0.0162 0.0911  0.0000    1.2000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0049   0.0039
+         hypsecant  2 19325.1759 -38646.3518 -38633.0092 0.0170 0.0669  0.0000    2.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0003 0.0058   0.0062
+           gennorm  3 19306.3957 -38606.7914 -38586.7775 0.0170 0.0678  0.0000    1.2174    NaN    NaN     NaN     NaN    NaN 1.3348    NaN 0.0004 0.0094   0.0252
+laplace_asymmetric  3 19251.5413 -38497.0826 -38477.0687 0.0385 0.0000 -0.4129    3.1140    NaN    NaN     NaN     NaN    NaN    NaN 1.1038 0.0015 0.0067   0.0145
+         jf_skew_t  4 19244.9464 -38481.8928 -38455.2076 0.0207 0.0131 -8.6504 1411.1766    NaN    NaN     NaN  1.2972 1.3371    NaN    NaN 0.0005 0.0064   0.1020
+           laplace  2 19235.5430 -38467.0860 -38453.7435 0.0395 0.0000  0.0000    3.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0005 0.0068   0.0076
+              norm  2 19143.7511 -38283.5023 -38270.1597 0.0350 0.0000  0.0000    0.0000    NaN    NaN     NaN     NaN    NaN    NaN    NaN 0.0002 0.0091   0.0083
 
   symbol     #obs   median     mean       sd     skew     kurt      min      max
      VXX     1933  -0.0065  -0.0021   0.0455   1.3785   7.3475  -0.2312   0.3308
 
               name  k    loglik        aic        bic     ks   ks_p    skew      kurt     df       a      b       p      q   beta  kappa     loc  scale  fit_sec
-      norminvgauss  4 3509.3395 -7010.6790 -6988.4116 0.0125 0.9178  1.4112    7.9889    NaN  0.6011 0.2121     NaN    NaN    NaN    NaN -0.0140 0.0318   1.2578
-         johnsonsu  4 3508.7676 -7009.5353 -6987.2680 0.0148 0.7850  1.7252   17.1161    NaN -0.3880 1.1692     NaN    NaN    NaN    NaN -0.0183 0.0333   0.0218
-     genhyperbolic  5 3509.7390 -7009.4780 -6981.6438 0.0123 0.9284  1.6311   10.3419    NaN  0.5828 0.2428 -0.7948    NaN    NaN    NaN -0.0140 0.0365   1.4167
-laplace_asymmetric  3 3489.8411 -6973.6822 -6956.9817 0.0214 0.3368  0.7945    3.4260    NaN     NaN    NaN     NaN    NaN    NaN 0.8202 -0.0139 0.0297   0.0063
-                 t  3 3480.9020 -6955.8040 -6939.1035 0.0299 0.0624     NaN       NaN 2.8162     NaN    NaN     NaN    NaN    NaN    NaN -0.0069 0.0274   0.0859
-           gennorm  3 3464.4637 -6922.9273 -6906.2269 0.0396 0.0046  0.0000    3.6209    NaN     NaN    NaN     NaN    NaN 0.9351    NaN -0.0067 0.0277   0.0130
-           laplace  2 3462.8789 -6921.7578 -6910.6242 0.0406 0.0033  0.0000    3.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0065 0.0307   0.0022
-         jf_skew_t  4 3457.6075 -6907.2149 -6884.9476 0.0426 0.0018 -5.4832 1960.7800    NaN     NaN    NaN  0.9796 0.9906    NaN    NaN -0.0040 0.0250   0.0398
-         hypsecant  2 3447.9305 -6891.8610 -6880.7273 0.0400 0.0041  0.0000    2.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0060 0.0263   0.0106
-          logistic  2 3413.8759 -6823.7517 -6812.6180 0.0492 0.0002  0.0000    1.2000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0052 0.0224   0.0034
-          skewnorm  3 3322.2028 -6638.4057 -6621.7052 0.0856 0.0000  0.4295    0.2834    NaN  1.9141    NaN     NaN    NaN    NaN    NaN -0.0450 0.0625   0.0501
-              norm  2 3231.3179 -6458.6358 -6447.5022 0.1063 0.0000  0.0000    0.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0021 0.0455   0.0027
+      norminvgauss  4 3509.3395 -7010.6790 -6988.4116 0.0125 0.9178  1.4112    7.9889    NaN  0.6011 0.2121     NaN    NaN    NaN    NaN -0.0140 0.0318   1.0471
+         johnsonsu  4 3508.7676 -7009.5353 -6987.2680 0.0148 0.7850  1.7252   17.1161    NaN -0.3880 1.1692     NaN    NaN    NaN    NaN -0.0183 0.0333   0.0205
+     genhyperbolic  5 3509.7390 -7009.4780 -6981.6438 0.0123 0.9284  1.6311   10.3419    NaN  0.5828 0.2428 -0.7948    NaN    NaN    NaN -0.0140 0.0365   1.4609
+laplace_asymmetric  3 3489.8411 -6973.6822 -6956.9817 0.0214 0.3368  0.7945    3.4260    NaN     NaN    NaN     NaN    NaN    NaN 0.8202 -0.0139 0.0297   0.0068
+                 t  3 3480.9020 -6955.8040 -6939.1035 0.0299 0.0624     NaN       NaN 2.8162     NaN    NaN     NaN    NaN    NaN    NaN -0.0069 0.0274   0.0866
+           gennorm  3 3464.4637 -6922.9273 -6906.2269 0.0396 0.0046  0.0000    3.6209    NaN     NaN    NaN     NaN    NaN 0.9351    NaN -0.0067 0.0277   0.0124
+           laplace  2 3462.8789 -6921.7578 -6910.6242 0.0406 0.0033  0.0000    3.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0065 0.0307   0.0024
+         jf_skew_t  4 3457.6075 -6907.2149 -6884.9476 0.0426 0.0018 -5.4832 1960.7800    NaN     NaN    NaN  0.9796 0.9906    NaN    NaN -0.0040 0.0250   0.0386
+         hypsecant  2 3447.9305 -6891.8610 -6880.7273 0.0400 0.0041  0.0000    2.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0060 0.0263   0.0088
+          logistic  2 3413.8759 -6823.7517 -6812.6180 0.0492 0.0002  0.0000    1.2000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0052 0.0224   0.0038
+              norm  2 3231.3179 -6458.6358 -6447.5022 0.1063 0.0000  0.0000    0.0000    NaN     NaN    NaN     NaN    NaN    NaN    NaN -0.0021 0.0455   0.0025
+
+Total runtime: 37.14 s
 ```
-Total runtime: 42.79 s
+# Additional distributions
+
+## Normal tempered stable (NTS, univariate)
+
+Optional `nts-symmetric` and `nts-skewed` models use a normal mean-variance
+mixture. `nts` aliases the skewed version; defaults are unchanged.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models nig-symmetric nig variance-gamma nts-symmetric nts
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --marginal-models nts
 ```
+
+The identified parameterization is `X = loc + scale*(b*W + sqrt(W)*Z)`,
+where `Z` is independent standard normal and the tempered-stable mixing
+variable has cumulant generator
+`K_W(s) = lam/alpha * (1 - (1-s/lam)**alpha)`.
+Here `0<alpha<1`, `lam>0`, and `E[W]=1` fixes the otherwise redundant mixing
+scale. Thus `E[X]=loc+scale*b` and
+`Var[X]=scale**2*(1+b**2*(1-alpha)/lam)`; location is not generally the mean.
+Symmetry sets `b=0`, giving 4 free parameters instead of 5. Fixing location
+removes one parameter. All return moments are finite.
+
+This is a rescaling of [TempStable's NTS characteristic function](https://search.r-project.org/CRAN/refmans/TempStable/html/charNTS.html),
+implemented independently without copying its R source. At `alpha=0.5` it
+is NIG; as `alpha` tends to zero it approaches VG with gamma mixing shape
+`lam`. As `alpha` tends to one it approaches a normal distribution. These
+relations are used for numerical tests, not as substitutes for NTS fitting.
+
+Density/CDF/SF calculations use saddlepoint-shifted **Fourier inversion**, not
+a saddlepoint density approximation. Analytic Fourier scores speed up MLE.
+Expected shortfall uses a direct partial-moment inversion. Numerical
+integration failures raise errors rather than silently flooring densities.
+Sampling uses exponential tilting of positive stable draws, with independent
+pieces to improve acceptance. Copula marginals use numerical inverse CDFs,
+so large copula simulations may be slow. A standalone multivariate NTS model
+and joint marginal/copula refinement are not included.
+
+Multi-start fitting restricts `alpha` to `[0.1,0.95]`, `lam` to `[0.1,50]`,
+`b` to `[-5,5]`, and standardized log scale to `[-6,6]`. This is bounded MLE,
+not an unrestricted fit; boundary solutions are flagged and unranked.
+Near-boundary parameter combinations may fail numerical integration checks.
+The VG and normal endpoints are not inside the fitted parameter domain;
+compare their separately fitted models. No new dependency is needed.
+Fitting can take several minutes per asset and is much slower than the
+closed-form families. For initial experiments, use short windows and an
+explicit `--max-iterations` cap; hitting that cap is not convergence.
+The projected likelihood score is checked as well as the optimizer's status
+to detect false convergence after a rejected numerical integration point.
+
+## EGB2 (univariate)
+
+Optional models `egb2-symmetric` and `egb2-skewed` fit the exponential
+generalized beta distribution of the second kind. `egb2` aliases the skewed
+version; the default model list is unchanged.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models logistic egb2-symmetric egb2
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --marginal-models egb2
+```
+
+Parameterization: `X = loc + scale*log(U/(1-U))`, with `U ~ Beta(a,b)` and
+positive `a,b,scale`. Symmetry ties `b=a`; `a=b=1` is logistic. Location is
+not generally the mean. Free parameter counts are 3 (symmetric) and 4
+(skewed); fixing location removes one. Both tails are exponential and all
+return moments exist. Absolute skewness is bounded by 2 and ordinary kurtosis
+by 9, so this is not a substitute for arbitrarily heavy Student-t tails.
+See [the EGB2 definition and properties](https://doi.org/10.1007/s13209-015-0134-1).
+
+Independent NumPy/SciPy code provides stable log densities, beta-function
+CDF/SF and inverse CDF, analytic moments, sampling, and numerical expected
+shortfall through the existing risk API. Copula marginal fitting and portfolio
+simulation are supported; joint marginal/copula refinement and a standalone
+multivariate EGB2 model are not. Multi-start MLE bounds shapes to `[0.01,200]`
+and standardized log scale to `[-12,12]`. Boundary/nonconverged fits remain
+visible but are excluded from rankings. No new dependency is required.
+
+## Meixner / NEF-GHS (univariate)
+
+Opt-in `meixner-symmetric` and `meixner-skewed` use location `loc`, scale `a`,
+peakedness `delta>0`, and skew parameter `-pi<b<pi`. The symmetric fit fixes
+`b=0` (three parameters); the skewed fit estimates it (four parameters).
+`meixner` and `nef-ghs` are aliases for `meixner-skewed`; aliases are
+deduplicated and saved results use canonical names. Fixed location removes one
+parameter. Defaults are unchanged.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models hyperbolic-secant meixner-symmetric meixner
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --marginal-models meixner
+```
+
+For `z=(x-loc)/a`, the density is
+`(2*cos(b/2))^(2*delta)*exp(b*z)*abs(Gamma(delta+i*z))^2 / (2*pi*a*Gamma(2*delta))`.
+Mean is `loc+a*delta*tan(b/2)` and variance is
+`a^2*delta/(2*cos(b/2)^2)`; scale is not standard deviation.
+All moments exist. At `delta=0.5,b=0,a=pi*s`, it equals SciPy's hyperbolic
+secant with scale `s`. This is distinct from Champernowne and GH distributions.
+Independent implementation from [Fischer (2002)](https://hdl.handle.net/10419/29624)
+and the [Meixner formulas in Hess (2018), Section 2](https://arxiv.org/html/1803.09444).
+
+Multi-start MLE bounds are `0.01<=delta<=200`, `abs(b)<=pi-0.001`, and
+standardized log scale in [-12,12]. Boundary/nonconverged fits are unranked.
+Density uses complex log-gamma; moments are analytic; CDF/survival probabilities
+use checked quadrature split at the mode, and quantiles use bracketed inversion.
+Random sampling uses inverse CDF. Large copula portfolio simulations may be slow
+with these numerical quantiles. Univariate VaR/ES work through `portfolio_risk`
+on a reconstructed frozen marginal, and the existing copula portfolio CLI can
+estimate portfolio VaR/ES by simulation. Copula joint refinement, standalone
+multivariate Meixner models, and option pricing are not included.
+
+## Champernowne (univariate)
+
+The opt-in `champernowne` model uses the real-line density
+`C(lam)/(scale*(cosh((x-loc)/scale)+lam))`, with `lam>-1` and `scale>0`.
+It is symmetric with exponential tails and three fitted parameters; all moments
+are finite. This is not the positive-valued income distribution obtained by
+exponentiating the variable. See [Baker (2026), Appendix A](https://doi.org/10.1007/s42519-026-00549-4).
+
+At `lam=0` it equals SciPy's `hypsecant` (also accepted as
+`hyperbolic-secant`); at `lam=1` it equals `logistic`, with the same location
+and scale. Scale is not standard deviation. Negative lam values are allowed,
+extending the shape range beyond the two special cases.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models champernowne hyperbolic-secant logistic student-t
+```
+
+Density, CDF/survival probabilities, quantiles, and moments have closed forms;
+simulation uses inverse-CDF sampling. Fitting uses four starts, with
+`log(1+lam)` and standardized `log(scale)` constrained to [-12,12]. Boundary
+solutions are flagged and unranked. Fixed location reduces the parameter count
+from three to two. It can also be used as a two-stage copula marginal through
+`--marginal-models champernowne`; copula joint refinement and a standalone
+multivariate Champernowne family are not included. Defaults are unchanged.
+
+## GH skew Student-t (Aas--Haff)
+
+`gh-skew-t` is an opt-in, independent NumPy/SciPy implementation of the
+[Aas--Haff GH skew Student-t](https://doi.org/10.1093/jjfinec/nbj006).
+No implementation code from tspydistributions or SkewHyperbolic was copied.
+The source is the paper's normal/inverse-gamma mixture, extended to joint
+returns. This is distinct from `gh` (an alias for `gh-skewed`), Azzalini skew-t,
+and noncentral t. Zero skewness recovers the existing Student-t family.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models student-t gh-skew-t
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models student-t gh-skew-t
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+The parameterization is `X=location+W*gamma+sqrt(W)*Z`,
+`W ~ InvGamma(df/2, scale=df/2)`, with independent `Z ~ N(0, scatter)`.
+In one dimension `scale=sqrt(scatter)` and `b=gamma/scale`.
+Unlike the paper's delta, this scale is the usual t scale at zero skewness;
+the paper's delta equals `sqrt(df)*scale` and beta equals `b/scale`.
+For nonzero gamma, mean is `location+df/(df-2)*gamma` when `df>2`;
+covariance is `df/(df-2)*scatter + 2*df^2/((df-2)^2*(df-4))*gamma*gamma'`
+when `df>4`. Skewness requires `df>6`, kurtosis `df>8`.
+Undefined joint moments are saved as null. No finite-variance assumption is
+imposed on fitting: df is fitted in [0.25,200], standardized gamma components
+in [-20,20], and log Cholesky diagonals in [-10,10]. Bound solutions and
+unconverged fits are flagged and excluded from portfolio projection.
+Multi-start likelihood optimization uses three df starts and three skew starts.
+Joint parameter count is `2*d+d*(d+1)/2+1`, minus `d` if location is fixed.
+
+Univariate/joint fits, simulation generators/candidates, and two-stage copula
+marginal selection support the model. Copula joint-refinement support is not
+added here. Portfolio projections are exact univariate GH skew-t distributions;
+CDF/quantiles and ES use checked numerical integration. For a negative projected
+gamma the polynomial loss tail has infinite ES when `df<=2`. Positive gamma
+has an exponential loss tail with finite ES for all positive df, even if its
+mean/variance do not exist. At exactly zero projected gamma, ordinary t moment
+and ES thresholds apply instead. Reversing positions reverses the tail direction.
+
+Density tests use direct inverse-gamma mixture integration, the ordinary t limit,
+and sign reflection; quantiles/moments/ES are checked against seeded simulation.
+
+## Variance-gamma details
+
+Family aliases `variance-gamma`, `nig`, `gh`, and `hyperbolic` select
+`variance-gamma-skewed`, `nig-skewed`, `gh-skewed`, and `hyperbolic-skewed`,
+respectively. They work for univariate/joint fitting (including copula marginal
+selection), simulation generators/candidates, and portfolio model selection.
+Saved fit names are canonical. Supplying an alias and its canonical name fits
+the model only once. Symmetric variants still require `-symmetric` explicitly.
+Defaults are unchanged.
+
+Opt-in models `variance-gamma-symmetric` and `variance-gamma-skewed` are
+available in univariate and joint fitting, simulation studies, and portfolio
+VaR/expected shortfall. Existing default model lists are unchanged.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models variance-gamma-symmetric variance-gamma-skewed
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 --models variance-gamma-symmetric variance-gamma-skewed
+python portfolio_distribution.py joint_distribution_fits.json --weights SPY=0.6 TLT=0.4 --risk-levels 0.95 0.99
+```
+
+The identified mixture is `X = location + W*gamma + sqrt(W)*Z`, with
+`W ~ Gamma(shape=vg_shape, rate=vg_shape)`, independent `Z ~ N(0, scatter)`.
+Thus `E[W]=1`, mean is `location+gamma`, and covariance is
+`scatter + gamma*gamma'/vg_shape`. Symmetric VG fixes gamma to zero.
+The univariate shape `b` is gamma divided by the Gaussian scale.
+All moments exist. Linear portfolio projections are exactly univariate VG;
+CDFs, quantiles, and ES use numerical integration rather than simulation.
+
+**Restricted fitting:** to prevent an infinite density at an observation from
+masquerading as a successful likelihood fit, joint MLE restricts
+`vg_shape >= dimension/2 + 0.05`, with upper bound 100. Univariate fitting uses
+`0.55 < vg_shape <= 100`. Boundary solutions are flagged and excluded from
+rankings/portfolio projections. This deliberately excludes some legitimate
+sharp-peaked VG distributions; it is not unrestricted VG maximum likelihood.
+Joint symmetric/skewed parameter counts are respectively
+`d + d*(d+1)/2 + 1` and `2*d + d*(d+1)/2 + 1`; fixing location removes `d`.
+The saved shape bounds/restriction document the optimization domain.
+This is a dedicated gamma-mixture limit, not a near-boundary approximation
+using the existing chi=1 generalized-hyperbolic models.
