@@ -15,7 +15,7 @@ from .joint_power import covariance_factor
 
 
 def preset(model, dimensions=2):
-    """Moderate-tail examples with the same population mean/covariance."""
+    """Common covariance; fixed-origin Laplace presets may have a different mean."""
     model = canonical_model(model)
     d = dimensions
     sd = np.linspace(.01, .02, d)
@@ -23,7 +23,35 @@ def preset(model, dimensions=2):
     mu = np.full(d, .0003)
     truth = dict(model=model, location=mu.tolist(), mean=mu.tolist(), covariance=covariance.tolist())
     scatter = covariance.copy()
-    if model == 'gh-skew-t':
+    if model in {'ged-skewed', 'fs-skew-normal'}:
+        from .joint_power import JointPower
+        truth.update(power=2. if model == 'fs-skew-normal' else 1.25,
+                     skewness=np.where(np.arange(d)%2, .25, -.25).tolist())
+        latent = JointPower(dict(truth, location=np.zeros(d), scatter=np.eye(d)))
+        chol = np.linalg.cholesky(covariance)@np.linalg.inv(np.linalg.cholesky(latent.cov()))
+        scatter = chol@chol.T
+        truth['location'] = (mu-chol@latent.mean()).tolist()
+    elif model in {'generalized-t', 'generalized-t-skewed'}:
+        from .joint_generalized_t import covariance_factor as gt_factor
+        truth.update(power=1.5, q=5., tail_index=7.5)
+        scatter = covariance/gt_factor(d, 1.5, 5.)
+        if model.endswith('-skewed'):
+            from .joint_generalized_t import JointGeneralizedT
+            truth['skewness'] = np.where(np.arange(d)%2, .25, -.25).tolist()
+            latent = JointGeneralizedT(dict(truth, location=np.zeros(d), scatter=np.eye(d)))
+            chol = np.linalg.cholesky(covariance)@np.linalg.inv(np.linalg.cholesky(latent.cov()))
+            scatter = chol@chol.T
+            truth['location'] = (mu-chol@latent.mean()).tolist()
+    elif model in {'nts-symmetric','nts-skewed'}:
+        alpha,lam = .6,2.
+        gamma = sd*np.where(np.arange(d)%2,1.,-1.)*.3 if model=='nts-skewed' else np.zeros(d)
+        scatter = covariance-(1-alpha)/lam*np.outer(gamma,gamma)
+        truth.update(alpha=alpha,lam=lam,nts_alpha=alpha,gamma=gamma.tolist(),location=(mu-gamma).tolist())
+    elif model in {'asymmetric-laplace','laplace-mixture-symmetric'}:
+        gamma=mu.copy() if model=='asymmetric-laplace' else np.zeros(d)
+        scatter=covariance-np.outer(gamma,gamma)
+        truth.update(location=np.zeros(d).tolist(),gamma=gamma.tolist(),mean=gamma.tolist(),vg_shape=1.)
+    elif model == 'gh-skew-t':
         nu=10.; ew=nu/(nu-2); vw=2*nu**2/((nu-2)**2*(nu-4))
         gamma=sd*np.where(np.arange(d)%2,1.,-1.)*.2
         scatter=(covariance-vw*np.outer(gamma,gamma))/ew
@@ -91,11 +119,12 @@ def preset(model, dimensions=2):
 def parameters(fit):
     """Free distribution parameters and useful derived moments, in input units."""
     result = {}
-    for key in ['df', 'q', 'power', 'psi', 'lambda', 'vg_shape']:
+    for key in ['df', 'q', 'power', 'psi', 'lambda', 'vg_shape', 'lam', 'nts_alpha']:
         if fit.get(key) is not None:
             result[key] = float(fit[key])
-    for key in ['location', 'gamma', 'alpha', 'delta', 'mean']:
+    for key in ['location', 'gamma', 'alpha', 'delta', 'skewness', 'mean']:
         if fit.get(key) is not None:
+            if np.ndim(fit[key]) == 0: continue
             result.update({f'{key}[{i}]': float(v) for i, v in enumerate(fit[key])})
     for key in ['scatter', 'covariance']:
         if fit.get(key) is not None:

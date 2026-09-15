@@ -17,7 +17,9 @@ def portfolio_risk(distribution, confidence=.99):
     if isinstance(distribution, PointMass):
         return dict(var=0., es=0., es_status='finite', es_method='point-mass')
     from .joint_slash import ProjectedSlash
-    if isinstance(distribution,ProjectedSlash):
+    from .joint_generalized_t import ProjectedGeneralizedT
+    from .joint_finite_mixture import ProjectedFiniteMixture
+    if isinstance(distribution,(ProjectedSlash, ProjectedGeneralizedT, ProjectedFiniteMixture)):
         return distribution.risk(confidence)
     q = 1-confidence
     quantile = float(distribution.ppf(q))
@@ -35,6 +37,26 @@ def portfolio_risk(distribution, confidence=.99):
         z = stats.t.ppf(q, df)
         es = -loc+scale*(df+z*z)/(df-1)*stats.t.pdf(z, df)/q
         method = 'analytic-student-t'
+    elif name in {'johnsonsu', 'crystalball'}:
+        from .scipy_extra import extra_es
+        es = extra_es(distribution, q, quantile)
+        method = name+'-partial-moment'
+        if name == 'crystalball' and np.isposinf(es):
+            values = dict(zip(['beta', 'm', 'loc', 'scale'], distribution.args))
+            values.update(distribution.kwds)
+            if values['m'] <= 2:
+                return dict(var=-quantile, es=np.inf, es_status='infinite (m <= 2)', es_method=method)
+    elif name == 'generalized_t':
+        from .generalized_t import lower_first_moment
+        values = dict(zip(['power', 'q', 'skewness', 'loc', 'scale'], distribution.args))
+        values.update(distribution.kwds)
+        p, shape_q, skew = values['power'], values['q'], values['skewness']
+        if p*shape_q <= 1:
+            return dict(var=-quantile, es=np.inf, es_status='infinite (power*q <= 1)', es_method='generalized-t-partial-moment')
+        loc, scale = values.get('loc', 0.), values.get('scale', 1.)
+        partial = lower_first_moment((quantile-loc)/scale, p, shape_q, skew)
+        es = -loc-scale*partial/q
+        method = 'generalized-t-partial-moment'
     elif name == 'nts':
         from .nts import invert
         keys=['alpha','lam','b','loc','scale']

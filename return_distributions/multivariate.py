@@ -9,21 +9,25 @@ import time
 import numpy as np
 from scipy import linalg, optimize, special, stats
 from .joint_gh import GH_MODELS, fit_gh, JointGH
-from .joint_power import POWER_MODELS, fit_power, JointPower
+from .joint_power import POWER_MODELS, SKEW_POWER_MODELS, fit_power, JointPower
 from .joint_skew_t import fit_skew_t, JointSkewT
 from .joint_nct import JointNCT
 from .gh_skew_t import JointGHSkewT, fit_gh_skew_t
 from .model_names import canonical_model
 from .joint_sdb import SDB_MODELS, JointSDB, fit_sdb
 from .joint_slash import SLASH_MODELS, JointSlash, fit_slash
+from .joint_laplace_mixture import LAPLACE_MIXTURE_MODELS, JointLaplaceMixture, fit_laplace_mixture
+from .joint_generalized_t import JointGeneralizedT, fit_generalized_t
+from .joint_nts import JointNTS, fit_nts_joint, NTS_MODELS
 
 JOINT_MODELS = ('normal', 'student-t', *POWER_MODELS, *GH_MODELS, 'azzalini-skew-t', 'noncentral-t')
 from .variance_gamma import VG_MODELS, JointVG
-ALL_JOINT_MODELS = (*JOINT_MODELS, *SDB_MODELS, *SLASH_MODELS, *VG_MODELS, 'gh-skew-t')
+ALL_JOINT_MODELS = (*JOINT_MODELS, *SDB_MODELS, *SLASH_MODELS, *VG_MODELS, 'gh-skew-t', *LAPLACE_MIXTURE_MODELS, 'generalized-t', 'generalized-t-skewed', *NTS_MODELS, *SKEW_POWER_MODELS)
 
 
 def fit_joint(data, model='student-t', *, location=None, max_iterations=2000,
-              df_starts=(3., 8., 30.), sdb_points=512, sdb_seed=12345, slash_points=64):
+              df_starts=(3., 8., 30.), sdb_points=512, sdb_seed=12345, slash_points=64,
+              laplace_location=None, laplace_mode_bandwidth=None, nts_points=256):
     """Return a JSON-serializable joint fit in original return units.
 
     Data must be a finite (observations, assets) array. Fixed location may be
@@ -40,6 +44,8 @@ def fit_joint(data, model='student-t', *, location=None, max_iterations=2000,
         raise ValueError('Need at least max(8, assets+2) complete observations')
     if model not in ALL_JOINT_MODELS:
         raise ValueError('Unknown joint model: ' + model)
+    if model not in LAPLACE_MIXTURE_MODELS and (laplace_location is not None or laplace_mode_bandwidth is not None):
+        raise ValueError('Laplace location options require a Laplace-mixture model')
     if max_iterations < 1:
         raise ValueError('max_iterations must be positive')
     center, unit = x.mean(axis=0), x.std(axis=0)
@@ -55,6 +61,14 @@ def fit_joint(data, model='student-t', *, location=None, max_iterations=2000,
             raise ValueError('Fixed location must be finite')
         fixed = (fixed-center)/unit
     mu0 = np.zeros(d) if fixed is None else fixed
+    if model in NTS_MODELS:
+        if not isinstance(nts_points,int) or not 64 <= nts_points <= 1024:
+            raise ValueError('NTS quadrature points must be an integer from 64 to 1024')
+        return fit_nts_joint(x,model,location,max_iterations,nts_points)
+    if model in {'generalized-t', 'generalized-t-skewed'}:
+        return fit_generalized_t(x, location, max_iterations, skewed=model.endswith('-skewed'))
+    if model in LAPLACE_MIXTURE_MODELS:
+        return fit_laplace_mixture(x,model,location,max_iterations,laplace_location,laplace_mode_bandwidth)
     if model == 'gh-skew-t':
         return fit_gh_skew_t(x,location,max_iterations)
     if model in SLASH_MODELS:
@@ -65,7 +79,7 @@ def fit_joint(data, model='student-t', *, location=None, max_iterations=2000,
         return fit_skew_t(x, location, max_iterations, model=model)
     if model in (*GH_MODELS, *VG_MODELS):
         return fit_gh(x, model, location, max_iterations)
-    if model in POWER_MODELS:
+    if model in (*POWER_MODELS, *SKEW_POWER_MODELS):
         return fit_power(x, model, location, max_iterations)
     scatter0 = (z-mu0).T@(z-mu0)/n
     attempts = []
@@ -149,6 +163,15 @@ def fit_joint(data, model='student-t', *, location=None, max_iterations=2000,
 
 def joint_distribution(fit):
     """Reconstruct a SciPy frozen joint distribution from a saved JSON fit."""
+    if fit.get('components', 1) > 1:
+        from .joint_finite_mixture import JointFiniteMixture
+        return JointFiniteMixture(fit)
+    if fit['model'] in NTS_MODELS:
+        return JointNTS(fit)
+    if fit['model'] in {'generalized-t', 'generalized-t-skewed'}:
+        return JointGeneralizedT(fit)
+    if fit['model'] in LAPLACE_MIXTURE_MODELS:
+        return JointLaplaceMixture(fit)
     if fit['model'] == 'gh-skew-t':
         return JointGHSkewT(fit)
     if fit['model'] in VG_MODELS:
@@ -167,6 +190,6 @@ def joint_distribution(fit):
         return stats.multivariate_t(loc=fit['location'], shape=fit['scatter'], df=fit['df'])
     if fit['model'] in GH_MODELS:
         return JointGH(fit)
-    if fit['model'] in POWER_MODELS:
+    if fit['model'] in (*POWER_MODELS, *SKEW_POWER_MODELS):
         return JointPower(fit)
     raise ValueError('Unknown joint model')

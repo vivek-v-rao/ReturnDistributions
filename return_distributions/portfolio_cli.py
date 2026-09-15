@@ -12,8 +12,7 @@ import pandas as pd
 from .projection import project_distribution
 from .tail_risk import portfolio_risk
 from .copula_portfolio import simulate_portfolio
-from .joint_portfolio_mc import simulate_joint_portfolio
-from .joint_sdb import SDB_MODELS
+from .joint_portfolio_mc import simulate_joint_portfolio, MC_JOINT_MODELS
 
 
 def read_weights(entries=None, path=None):
@@ -49,7 +48,7 @@ def main(argv=None):
     parser.add_argument('--models', nargs='+', type=canonical_model, help='Optionally select families from saved fits; family aliases select skewed variants')
     parser.add_argument('--quantiles', type=float, nargs='+', default=[.01, .05, .5, .95, .99])
     parser.add_argument('--risk-levels', type=float, nargs='+', help='Confidence levels for positive-loss VaR/ES, e.g. .95 .99')
-    parser.add_argument('--simulations', type=int, default=100000, help='Monte Carlo draws per copula/SDB fit (default 100000)')
+    parser.add_argument('--simulations', type=int, default=100000, help='Monte Carlo draws per simulation-based portfolio fit (default 100000)')
     parser.add_argument('--seed', type=int, default=12345)
     parser.add_argument('--mc-batches', type=int, default=20, help='Independent batches for approximate Monte Carlo standard errors')
     parser.add_argument('--stage', choices=['all','two-stage','joint-refined','two-stage-retained'], default='all', help='Select copula estimation stage')
@@ -87,15 +86,23 @@ def main(argv=None):
             missing = set(weights)-set(symbols)
             if missing: raise ValueError(f'Fit {index} lacks weight symbols: {sorted(missing)}')
             w = np.array([weights.get(s, 0.) for s in symbols])
-            if 'copula' in fit or model in SDB_MODELS:
+            if fit.get('vol_standardization') == 'ewma':
+                print(f'Fit {index}: next-period conditional risk using saved EWMA scales as of {fit.get("last_date")}.')
+            if 'copula' in fit or model in MC_JOINT_MODELS:
                 print(f'Simulating fit {index}: {model}, {stage}; {args.simulations} draws...',flush=True)
                 # Same seed across fits uses common random numbers for comparisons.
                 simulator = simulate_portfolio if 'copula' in fit else simulate_joint_portfolio
-                metrics, draws = simulator(fit,w,args.quantiles,args.risk_levels or [],args.simulations,
+                simulation_weights = w/fit.get('return_scale',1.)
+                if 'copula' in fit and fit.get('vol_standardization') == 'ewma':
+                    from .vol_standardization import conditional_weights
+                    simulation_weights = conditional_weights(fit, simulation_weights)
+                metrics, draws = simulator(fit,simulation_weights,args.quantiles,args.risk_levels or [],args.simulations,
                     args.seed,args.mc_batches,args.allow_log_linear_combination)
                 row = dict(fit_index=index,model=model,stage=stage,window=fit.get('window'),
                     first_date=fit.get('first_date'),last_date=fit.get('last_date'),observations=fit.get('observations'),
                     return_type=fit.get('return_type','unspecified'),weights=json.dumps(dict(zip(symbols,w))),**metrics)
+                for key in ['asset_order','fit_label','vol_standardization','vol_lambda']:
+                    if key in fit: row[key] = fit[key]
                 if fit.get('return_type') == 'log': print('Warning: simulated linear combination of log returns, NOT portfolio log return.')
                 for level in args.risk_levels or []:
                     if metrics[f'tail_count_{level:g}'] < 100: print(f'Warning: only {metrics[f"tail_count_{level:g}"]} tail draws at {level:g}; increase --simulations.')
@@ -104,22 +111,26 @@ def main(argv=None):
                 rows.append(row)
                 if args.show_plot: plots.append((f'{index}: {model}, {stage}, window={fit.get("window")}',draws))
                 continue
-            distribution = project_distribution(fit, w, allow_log=args.allow_log_linear_combination)
+            distribution = project_distribution(fit, w/fit.get('return_scale',1.), allow_log=args.allow_log_linear_combination)
             if fit.get('return_type') == 'log':
                 print('Warning: reporting a weighted sum of asset log returns, NOT the portfolio log return.')
             row = dict(fit_index=index, model=fit['model'], window=fit.get('window'), first_date=fit.get('first_date'),
                        last_date=fit.get('last_date'), observations=fit.get('observations'),
                        return_type=fit.get('return_type', 'unspecified'), mean=float(distribution.mean()),
                        volatility=float(distribution.std()), weights=json.dumps(dict(zip(symbols, w))),
-                       method='numerical-projection' if distribution.__class__.__name__ in {'ProjectedPower','ProjectedSlash'} else 'analytic-family')
+                       method='numerical-projection' if distribution.__class__.__name__ in {'ProjectedPower','ProjectedSlash','ProjectedGeneralizedT'} else 'analytic-family')
+            for key in ['location_method','fit_label','estimation_method','asset_order','components','vol_standardization','vol_lambda']:
+                if key in fit: row[key]=fit[key]
             for q in dict.fromkeys(args.quantiles): row[f'q_{q:g}'] = float(distribution.ppf(q))
             for level in dict.fromkeys(args.risk_levels or []):
                 risk = portfolio_risk(distribution, level)
                 for key, value in risk.items(): row[f'{key}_{level:g}'] = value
             rows.append(row)
-            plots.append((f'{index}: {fit["model"]}, window={fit.get("window")}', distribution))
+            plots.append((f'{index}: {fit.get("fit_label",fit["model"])}, window={fit.get("window")}', distribution))
         if not rows: raise ValueError('No usable fits selected')
         result = pd.DataFrame(rows)
+        if any(f.get('vol_standardization') == 'ewma' for f in fits):
+            result['risk_basis'] = result.fit_index.map(lambda i: 'next-period conditional EWMA' if fits[i].get('vol_standardization') == 'ewma' else 'unconditional')
         print('\nPortfolio distribution (per input return period; quantiles are returns, not losses):')
         view = result.drop(columns='weights').copy()
         risk_columns = [f'{key}_{level:g}' for level in dict.fromkeys(args.risk_levels or []) for key in ['var', 'es']]
@@ -133,7 +144,7 @@ def main(argv=None):
         print('Volatility is not annualized. Undefined moments remain unavailable. Model parameter uncertainty is not included.')
         if args.risk_levels:
             print('VaR/ES use positive-loss convention, per input period. Negative values are not clipped. Joint Student-t ES is infinite for df <= 1; copula df alone does not determine ES existence.')
-        if any('copula' in fit or fit.get('model') in SDB_MODELS for fit in fits):
+        if any('copula' in fit or fit.get('model') in MC_JOINT_MODELS for fit in fits):
             print('MC SEs are approximate independent-batch errors, not parameter/model uncertainty. n/a if too few batch tail draws, endpoint rounding, or ES has no established finite variance. More draws may be needed.')
         if args.show_plot:
             import matplotlib.pyplot as plt

@@ -12,6 +12,7 @@ from .data import read_returns
 from .fitting import fit_many, fitted_distribution
 from .copulas import fit_copula
 from .copula_refinement import refine_joint
+from .table_format import aligned_table
 
 
 def clean_json(value):
@@ -39,13 +40,15 @@ def main(argv=None):
     parser.add_argument('--max-iterations', type=int, default=1000)
     parser.add_argument('--joint-refine', action='store_true', help='Jointly refine marginal/copula parameters from two-stage estimates')
     parser.add_argument('--output', type=Path, default=Path('copula_fits.json'))
+    parser.add_argument('--no-save', action='store_true', help='Screen output only; do not write fit, summary, or marginal audit files')
     args = parser.parse_args(argv)
     if args.joint_refine and args.marginal_mode == 'ranks': parser.error('--joint-refine requires fitted marginals, not ranks')
     if args.days and min(args.days) < 8: parser.error('Windows must be >=8')
     if args.max_iterations < 1 or not 0 < args.cdf_clip < .01: parser.error('Positive iterations and 0 < cdf-clip < .01 required')
-    if args.output.suffix.lower() != '.json': parser.error('--output must end in .json')
-    paths = [args.output, args.output.with_suffix('.csv'), args.output.with_name(args.output.stem+'_marginals.csv')]
-    if args.file.resolve() in {p.resolve() for p in paths}: parser.error('Output must not overwrite input')
+    if not args.no_save:
+        if args.output.suffix.lower() != '.json': parser.error('--output must end in .json')
+        paths = [args.output, args.output.with_suffix('.csv'), args.output.with_name(args.output.stem+'_marginals.csv')]
+        if args.file.resolve() in {p.resolve() for p in paths}: parser.error('Output must not overwrite input')
     print('Command: ' + ' '.join([sys.executable, '-m', 'return_distributions.copula_cli', *(sys.argv[1:] if argv is None else argv)]))
     try:
         returns = read_returns(args.file, args.symbols, args.input_type, args.return_type)
@@ -132,12 +135,13 @@ def main(argv=None):
                         print(f'Warning: refinement skipped; original fit retained: {exc}')
         summary = pd.DataFrame(summaries)
         print('\nCopula fit comparison:')
-        print(summary.to_string(index=False, float_format=lambda v: f'{v:.5g}', na_rep='n/a'))
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(clean_json(records), indent=2, allow_nan=False), encoding='utf-8')
-        summary.to_csv(paths[1], index=False)
-        if marginal_audit: pd.DataFrame(marginal_audit).to_csv(paths[2], index=False)
-        print(f'Wrote {args.output} and summary CSV' + (' and marginal audit CSV' if marginal_audit else ''))
+        print(aligned_table(summary))
+        if not args.no_save:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(clean_json(records), indent=2, allow_nan=False), encoding='utf-8')
+            summary.to_csv(paths[1], index=False)
+            if marginal_audit: pd.DataFrame(marginal_audit).to_csv(paths[2], index=False)
+            print(f'Wrote {args.output} and summary CSV' + (' and marginal audit CSV' if marginal_audit else ''))
         print('Compare copula scores only on identical marginal transforms and observations. Rank scores are pseudo-likelihoods, not return likelihoods.')
         print('Two-stage AIC/BIC are descriptive plug-in criteria, not jointly maximized-likelihood criteria; marginal family selection uncertainty is not counted.')
         if args.joint_refine:

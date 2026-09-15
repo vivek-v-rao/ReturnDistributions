@@ -11,12 +11,15 @@ import pandas as pd
 from scipy import optimize, stats
 from .skew_t import CUSTOM_DISTS
 from .variance_gamma import VG_MODELS, variance_gamma
-from .model_names import canonical_model, unique_models
+from .model_names import MODEL_ALIASES, canonical_model, unique_models
 from .gh_skew_t import gh_skew_t, fit_gh_skew_t
 from .champernowne import champernowne, fit_champernowne
 from .meixner import MEIXNER_MODELS, meixner, fit_meixner
 from .egb2 import EGB2_MODELS, egb2, fit_egb2
 from .nts import NTS_MODELS, nts, fit_nts
+from .skew_ged import skew_ged, fit_skew_ged
+from .generalized_t import GT_MODELS, generalized_t, fit_generalized_t
+from .scipy_extra import EXTRA_MODELS, crystal_ball, fit_extra
 
 DEFAULT_MODELS = ('normal', 'student-t', 'laplace', 'ged',
                   'hyperbolic-symmetric', 'hyperbolic-skewed',
@@ -28,8 +31,28 @@ ALIASES = {'normal': 'norm', 'student-t': 't', 'ged': 'gennorm',
            'gh-symmetric': 'genhyperbolic', 'gh-skewed': 'genhyperbolic'}
 
 
+def model_catalog():
+    """Names accepted by the univariate fitter, including installed SciPy families."""
+    project = set(DEFAULT_MODELS) | set(ALIASES) | set(MODEL_ALIASES) | set(CUSTOM_DISTS)
+    project.update((*EXTRA_MODELS, *GT_MODELS, *NTS_MODELS, *EGB2_MODELS, *MEIXNER_MODELS, *VG_MODELS,
+                    'ged-skewed', 'fs-skew-normal', 'champernowne', 'gh-skew-t'))
+    project.update(MODEL_ALIASES.values())
+    scipy_names = {name for name in dir(stats) if not name.startswith('_')
+                   and isinstance(getattr(stats, name), stats.rv_continuous)}
+    return {'Project models and aliases': sorted(project),
+            'Additional SciPy continuous models': sorted(scipy_names-project)}
+
+
 def specification(name):
     name = canonical_model(name)
+    if name in {'johnsonsu', 'johnson-su-symmetric'}:
+        return stats.johnsonsu, ['a', 'b', 'loc', 'scale'], {'a': 0.} if name == 'johnson-su-symmetric' else {}
+    if name == 'crystalball':
+        return crystal_ball, ['beta', 'm', 'loc', 'scale'], {}
+    if name in GT_MODELS:
+        return generalized_t, ['power', 'q', 'skewness', 'loc', 'scale'], {'skewness': 0.} if name == 'generalized-t' else {}
+    if name in {'ged-skewed', 'fs-skew-normal'}:
+        return skew_ged, ['power', 'skewness', 'loc', 'scale'], {'power': 2.} if name == 'fs-skew-normal' else {}
     if name in NTS_MODELS:
         return nts, ['alpha','lam','b','loc','scale'], {'b':0.} if name.endswith('-symmetric') else {}
     if name in EGB2_MODELS:
@@ -92,7 +115,20 @@ def fit_one(x, name, param_names=None, *, location=None, max_iterations=10000):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        if name == 'champernowne':
+        if name in EXTRA_MODELS:
+            params, result = fit_extra(z, name, kwargs.get('floc'), max_iterations)
+            params = list(params)
+            runs.append(result)
+        elif name in GT_MODELS:
+            params, result = fit_generalized_t(z, name == 'generalized-t', kwargs.get('floc'), max_iterations)
+            params = list(params)
+            runs.append(result)
+        elif name in {'ged-skewed', 'fs-skew-normal'}:
+            params, result = fit_skew_ged(z, kwargs.get('floc'), max_iterations,
+                                        fixed_power=2. if name == 'fs-skew-normal' else None)
+            params = list(params)
+            runs.append(result)
+        elif name == 'champernowne':
             params, result = fit_champernowne(z,kwargs.get('floc'),max_iterations)
             params=list(params)
             runs.append(result)
@@ -136,6 +172,18 @@ def fit_one(x, name, param_names=None, *, location=None, max_iterations=10000):
                fit_sec=time.perf_counter()-started)
     # Shape "k" in some legacy families must not overwrite parameter count.
     row.update({('shape_k' if key == 'k' else key): float(value) for key, value in zip(names, params)})
+    if name in EXTRA_MODELS:
+        row['fit_restriction'] = ('beta in [0.1,10]; m in [1.05,100]' if name == 'crystalball'
+            else ('a fixed at 0' if name == 'johnson-su-symmetric' else 'a in [-10,10]')+'; b in [0.25,20]') + '; standardized log(scale) in [-12,12]'
+        if name == 'crystalball': row['tail_index'] = row['m']-1
+        if result.boundary: row['status'] = 'boundary' if converged else 'not_converged'
+    if name in GT_MODELS:
+        row['tail_index'] = row['power']*row['q']
+        row['fit_restriction'] = 'power in [0.2,10]; q in [0.1,1000]; skewness in [-3,3]; standardized log(scale) in [-12,12]'
+        if result.boundary: row['status'] = 'boundary' if converged else 'not_converged'
+    if name in {'ged-skewed', 'fs-skew-normal'}:
+        row['fit_restriction'] = ('power fixed at 2' if name == 'fs-skew-normal' else 'power in [0.1,10]') + '; skewness in [-3,3]; standardized log(scale) in [-12,12]'
+        if result.boundary: row['status'] = 'boundary' if converged else 'not_converged'
     if name == 'champernowne':
         row['fit_restriction']='log(1+lam), standardized log(scale) in [-12,12]'
         if result.boundary: row['status']='boundary' if converged else 'not_converged'
@@ -157,24 +205,31 @@ def fit_one(x, name, param_names=None, *, location=None, max_iterations=10000):
     return row
 
 
-def fit_many(x, models=DEFAULT_MODELS, **kwargs):
+def fit_many(x, models=DEFAULT_MODELS, *, fit_timeout=None, **kwargs):
     """Return a ranked table; unsuccessful fits remain visible but unranked."""
     rows = []
+    from .fit_timeout import run_fit, FitTimeout, positive_seconds
+    if fit_timeout is not None: positive_seconds(fit_timeout)
     for name in unique_models(models):
         started = time.perf_counter()
         try:
-            rows.append(fit_one(x, name, **kwargs))
+            rows.append(run_fit(fit_one, x, name, fit_timeout=fit_timeout, **kwargs))
         except Exception as exc:
-            rows.append(dict(name=name, status='failed', converged=False, error=str(exc),
+            rows.append(dict(name=name, status='timeout' if isinstance(exc, FitTimeout) else 'failed', converged=False, error=str(exc),
                              aic=np.nan, bic=np.nan, fit_sec=time.perf_counter()-started))
     table = pd.DataFrame(rows)
     if table.empty:
         return table
-    table['rank'] = table.aic.where(table.status.eq('ok')).rank(method='min')
-    return table.sort_values(['rank', 'aic'], na_position='last').reset_index(drop=True)
+    from .fit_ranks import criterion_ranks
+    table = criterion_ranks(table)
+    return table.sort_values(['aic_rank', 'aic'], na_position='last').reset_index(drop=True)
 
 
 def fitted_distribution(row):
     """Reconstruct a frozen SciPy distribution from a fit table/CSV row."""
+    if isinstance(row.get('mixture_fit'), str):
+        import json
+        from .univariate_mixture import UnivariateMixture
+        return UnivariateMixture(json.loads(row['mixture_fit']))
     dist, names, _ = specification(row['name'])
     return dist(*[row['shape_k' if key == 'k' else key] for key in names])

@@ -12,6 +12,27 @@ from scipy import integrate, optimize, stats
 NTS_MODELS = ('nts-symmetric','nts-skewed')
 
 
+def sample_mixing(aa,ll,n,rng):
+    """Exact tilted-positive-stable mean-one mixing draws, shared by joint NTS."""
+    pieces=max(1,int(np.ceil(ll/aa)))
+    if pieces>10000: raise ValueError('NTS mixing sampler requires too many pieces for these parameters')
+    logscale=((1-aa)*np.log(ll)-np.log(aa)-np.log(pieces))/aa
+    w=np.zeros(n)
+    for _ in range(pieces):
+        pending=np.arange(n)
+        while len(pending):
+            angle=rng.uniform(np.finfo(float).eps,np.pi,size=len(pending))
+            exponential=rng.exponential(size=len(pending))
+            logstable=(np.log(np.sin(aa*angle))-np.log(np.sin(angle))/aa
+                +(1-aa)/aa*(np.log(np.sin((1-aa)*angle))-np.log(exponential)))
+            with np.errstate(over='ignore'):
+                draw=np.exp(logscale+logstable)
+            accepted=np.log(rng.uniform(size=len(pending))) < -ll*draw
+            w[pending[accepted]]+=draw[accepted]
+            pending=pending[~accepted]
+    return w
+
+
 def cumulant(z, alpha, lam, b):
     # expm1 preserves the VG limit as alpha tends to zero.
     return -lam/alpha*np.expm1(alpha*np.log1p(-(b*z+.5*z*z)/lam))
@@ -163,23 +184,7 @@ class NormalTemperedStable(stats.rv_continuous):
         aa=float(alpha.ravel()[0]); ll=float(lam.ravel()[0]); bb=float(b.ravel()[0])
         shape=() if size is None else size
         n=int(np.prod(shape)) if np.ndim(shape)>0 else int(shape or 1)
-        pieces=max(1,int(np.ceil(ll/aa)))
-        if pieces>10000:
-            raise ValueError('NTS mixing sampler requires too many pieces for these parameters')
-        logscale=((1-aa)*np.log(ll)-np.log(aa)-np.log(pieces))/aa
-        w=np.zeros(n)
-        for _ in range(pieces):
-            pending=np.arange(n)
-            while len(pending):
-                angle=random_state.uniform(np.finfo(float).eps,np.pi,size=len(pending))
-                exponential=random_state.exponential(size=len(pending))
-                logstable=(np.log(np.sin(aa*angle))-np.log(np.sin(angle))/aa
-                    +(1-aa)/aa*(np.log(np.sin((1-aa)*angle))-np.log(exponential)))
-                with np.errstate(over='ignore'):
-                    draw=np.exp(logscale+logstable)
-                accepted=np.log(random_state.uniform(size=len(pending))) < -ll*draw
-                w[pending[accepted]]+=draw[accepted]
-                pending=pending[~accepted]
+        w=sample_mixing(aa,ll,n,random_state)
         result=bb*w+np.sqrt(w)*random_state.normal(size=n)
         return result.reshape(shape)
 

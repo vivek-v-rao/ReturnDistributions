@@ -108,7 +108,21 @@ def project_distribution(fit, weights, *, allow_log=False):
         raise ValueError('Projection requires an interior, successfully converged fit')
     if fit.get('return_type') == 'log' and not allow_log:
         raise ValueError('Log-return fits require allow_log=True; the projection is not a portfolio log return')
-    w = np.asarray(weights, dtype=float)
+    from .vol_standardization import conditional_weights
+    w = conditional_weights(fit, weights)
+    if fit.get('components', 1) > 1:
+        from .joint_finite_mixture import ProjectedFiniteMixture, JointFiniteMixture
+        JointFiniteMixture(fit)  # Validate the saved component specification.
+        records = fit['component_fits']
+        if w.shape != (len(records[0]['location']),) or not np.isfinite(w).all():
+            raise ValueError('Weights must be finite and match the joint symbol order')
+        if not np.any(w): return PointMass()
+        locations = [float(w@np.asarray(r['location'])) for r in records]
+        scales = [float(np.sqrt(w@np.asarray(r['scatter'])@w)) for r in records]
+        if not np.isfinite(scales).all() or np.any(np.asarray(scales) <= 0) or not np.isfinite(locations).all():
+            raise ValueError('Numerically invalid mixture projection')
+        distributions = [project_distribution(r, w, allow_log=allow_log) for r in records] if fit['model'] in ('ged', 'nig-skewed') else None
+        return ProjectedFiniteMixture(fit['mixture_weights'], locations, scales, fit.get('df'), distributions=distributions)
     mu, scatter = np.asarray(fit['location']), np.asarray(fit['scatter'])
     d = len(mu)
     if w.shape != (d,) or not np.isfinite(w).all():
@@ -124,6 +138,25 @@ def project_distribution(fit, weights, *, allow_log=False):
     if not np.isfinite(loc) or not np.isfinite(scale) or scale <= 0:
         raise ValueError('Weights produce a numerically invalid projected location/scale')
     model = fit['model']
+    if model in {'ged-skewed', 'fs-skew-normal'}:
+        raise ValueError('Skewed power portfolios require simulate_joint_portfolio; no univariate family closure')
+    if model in {'nts-symmetric','nts-skewed'}:
+        from .joint_nts import JointNTS
+        return JointNTS(fit).project(w)
+    if model == 'generalized-t-skewed':
+        raise ValueError('Skewed generalized t portfolios require simulate_joint_portfolio; no univariate generalized-t closure')
+    if model == 'generalized-t':
+        from .generalized_t import generalized_t
+        from .joint_generalized_t import ProjectedGeneralizedT
+        p, q = fit['power'], fit['q']
+        if d == 1: return generalized_t(p, q, 0., loc=loc, scale=scale)
+        if p == 2: return stats.t(2*q, loc=loc, scale=scale/np.sqrt(2))
+        return ProjectedGeneralizedT(loc, scale, d, p, q)
+    from .joint_laplace_mixture import LAPLACE_MIXTURE_MODELS
+    if model in LAPLACE_MIXTURE_MODELS:
+        gamma=float(w@np.asarray(fit['gamma']))
+        kappa=np.exp(-np.arcsinh(gamma/(np.sqrt(2)*scale)))
+        return stats.laplace_asymmetric(kappa,loc=loc,scale=scale/np.sqrt(2))
     if model == 'gh-skew-t':
         from .gh_skew_t import gh_skew_t
         return gh_skew_t(fit['df'],float(w@np.asarray(fit['gamma']))/scale,loc=loc,scale=scale)
