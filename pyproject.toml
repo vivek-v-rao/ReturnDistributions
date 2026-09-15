@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "return-distributions"
+version = "0.1.0"
+description = "Univariate probability distribution fits for asset returns"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "scipy>=1.10"]
+
+[project.optional-dependencies]
+plots = ["matplotlib"]
+
+[project.scripts]
+return-distributions = "return_distributions.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["return_distributions*"]

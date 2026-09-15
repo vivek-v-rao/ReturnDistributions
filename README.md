@@ -5,6 +5,13 @@ direction. The author guided the choice of models, specified
 requirements, ran analyses, and reviewed results. Codex also generated
 tests and documentation.
 
+Console output uses the conventional unrestricted-family names `nig`, `gh`,
+`hyperbolic`, `variance-gamma`, `meixner`, and `egb2`, without a `-skewed`
+suffix. Their `-symmetric` variants remain distinct. Existing `-skewed` input
+aliases and CSV/JSON identifiers are unchanged for compatibility. Explicit
+skew-family names such as `ged-skewed`, `generalized-t-skewed`, and `gh-skew-t`
+are retained. Older output examples below may show the longer names.
+
 ## Reusable univariate fitting package
 
 Run without installation from this directory:
@@ -58,6 +65,414 @@ the correction to fitted-sample KS p-values.
 
 Tests: `python -m unittest test_return_distributions -v`.
 
+## Copulas alongside joint distributions
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t nig --copulas gaussian student-t --marginal-models student-t nig --weights SPY=.6 TLT=.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+`--copulas` optionally invokes the existing two-stage Gaussian/Student-t copula
+engine on exactly the joint models' sample for every window, date range, subperiod,
+and raw/EWMA variant. `--marginal-models` supplies candidate univariate families
+(default Student-t); the best successful fit is selected separately for each
+asset using `--marginal-criterion aic` (default) or `bic`. Matching marginal fits
+are reused for `--univariate`. `--location`, `--max-iterations`, and per-fit
+`--fit-timeout` apply. `--cdf-clip` defaults to 1e-10; clipping counts are reported.
+
+The separate comparison reports selected marginals, latent correlation, Student-t
+copula degrees of freedom, copula scores, and descriptive two-stage full-density
+scores. These do not enter ordinary joint-model AIC/BIC ranks. Full-density scores
+include EWMA Jacobians and use the requested return scale; copula-only scores are
+on the marginal probability scale. Marginal selection uncertainty is not counted.
+
+With weights, portfolio VaR/ES uses `--simulations`, `--seed`, and `--mc-batches`.
+EWMA risk is rescaled at the block endpoint, and percentage risks undo input
+return scaling. Empirical risk is historical or filtered historical simulation.
+Saving adds `_copulas.json`, `_copulas.csv`, `_copula_marginals.csv`, and (with
+weights) `_copula_risk.csv` beside the main output. Saved marginal parameters and
+their audit scores remain in fitting units. Copula JSON can also be used by the
+saved-fit portfolio program. `--no-save` suppresses these files too.
+
+The standalone `asset_copula_distributions.py` remains available. Rank-based
+marginals, asset-specific marginal overrides, joint refinement, and inclusion of
+copulas in joint JS comparisons are not exposed by this first integration.
+
+## Date ranges and chronological subperiods
+
+Both fitting programs accept inclusive `--date-min YYYY-MM-DD` and
+`--date-max YYYY-MM-DD` bounds on return dates. Returns are constructed before
+filtering, preserving the preceding price for the first included return.
+After date and eligibility filtering, `--days` selects the last N returns;
+`--subperiods 1 2 4` then fits the entire selected window, its two halves, and
+its four quarters successively (seven blocks per model/volatility variant).
+Each partition is chronological and nonoverlapping, with block sizes differing
+by at most one observation. Blocks need at least eight observations; individual
+models can require more. Defaults are no date bounds and `--subperiods 1`.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t nig --date-min 2005-01-01 --date-max 2025-12-31 --subperiods 1 2 4 --no-save
+```
+
+Partitions, block numbers, dates, and observation counts are reported and saved.
+AIC/BIC ranks and distribution distances are calculated within each window/block,
+never across different blocks. Raw/EWMA variants have identical block dates.
+Univariate `--common-sample` aligns dates across assets too. Without it, each
+asset's available observations determine its blocks.
+
+EWMA uses pre-window history for initialization and updates continuously rather
+than restarting at block boundaries. Conditional risk is evaluated using volatility
+immediately after the block's final return, not the end of the full data file.
+These are in-sample stability comparisons, not out-of-sample forecasting tests.
+
+## Return scaling
+
+Both `asset_return_distributions.py` and `asset_joint_distributions.py` accept
+`--return-scale FACTOR` (positive, default 1). For example, `--return-scale 100`
+multiplies computed or supplied returns by 100 before fitting. Raw parameters,
+means and SDs are then in percentage-point units; covariances scale by 10000.
+Likelihood, AIC and BIC are reported in the scaled return units, including
+EWMA Jacobian adjustments. EWMA-standardized parameters are dimensionless.
+`--location` uses fitting units, and `--vol-floor` uses scaled return units.
+
+The scale factor is printed and saved as `return_scale`. Percentage-formatted
+VaR/ES remains in ordinary return percentages (no double scaling), including
+empirical rows and subsequent portfolio calculations from saved joint fits.
+Older files without `return_scale` are treated as scale 1. Saved distribution
+parameters remain in fitting units; API projections therefore also use those
+units unless the caller rescales weights or results.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t nig --return-scale 100 --no-save
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t nig --return-scale 100 --weights SPY=.6 TLT=.4 --risk-levels .95 .99 --no-save
+```
+
+## Univariate raw/EWMA comparisons and tail risk
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t nig --standardize-vol none ewma --vol-lambda .94 .97 --days 1260 --common-sample --risk-levels .95 .975 .99 .995 --no-save
+```
+
+`--standardize-vol none ewma` fits both raw and lagged, zero-mean EWMA-standardized
+returns. Multiple `--vol-lambda` values are evaluated successively; raw fits run
+once per asset/window. Alternatively specify `--vol-halflife`. The defaults are
+lambda .94, `--vol-warmup 63`, and `--vol-floor 1e-8`. The filter uses history
+before the fitting window, excludes its warmup observations, and resets on missing
+returns. All variants use the intersection of eligible dates within each asset.
+`--common-sample` additionally requires identical complete-case dates across
+selected assets; without it each asset keeps its available observations.
+
+Parameters, moments, density comparisons and plots are in each fit's input units.
+EWMA likelihoods/AIC/BIC include the scale Jacobian and are reported in original
+return units. The final comparison ranks variants within asset/window; the filter
+settings are treated as fixed, with selection uncertainty not included. A supplied
+`--location` is in input units, so it is standardized for an EWMA fit.
+
+`--risk-levels` prints per-asset positive-loss VaR and ES (not annualized), including
+an empirical row. Raw risk is unconditional historical risk; EWMA risk multiplies
+the fitted standardized risk by the next-period SD. Its empirical row is filtered
+historical simulation. Conditional scales are taken at the final eligible return
+of each fitting block. Failed fits are retained but not used for risk;
+mathematically infinite ES and numerical failures are distinguished. Parameter
+and filter uncertainty are not included. Saving writes `<output stem>_risk.csv`.
+Saved distribution parameters remain in fit units; `next_volatility` records the
+conditional rescaling. Embedded `mixture_fit` JSON likewise stays in fitting units,
+while the enclosing CSV scores include the EWMA Jacobian.
+
+`--models all` expands the deduplicated project catalog, not every SciPy model;
+it must be used alone. Some models are slow, so consider `--fit-timeout`.
+Standalone single-fit tables now reuse the compact univariate formatter used by
+the joint program. These options also work with finite mixtures below.
+
+## Univariate finite mixtures
+
+Fit each asset separately, including 1--K component fits for selected families:
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t ged nig --mixture-models all --max-components 2 --no-save
+```
+
+Supported families are normal, Student-t, GED, and skewed NIG (`nig` alias).
+`--mixture-models all` selects supported families from `--models`; explicit
+families add any missing single-component baseline. Without `--mixture-models`,
+supported requested families are selected automatically when `--max-components`
+exceeds one. Other requested models receive single-component fits only.
+
+This reuses the multivariate mixture fitter in one dimension. Existing univariate
+baselines are converted to its parameterization for initialization, not refitted.
+Student-t components share df, GED components share power, and NIG components
+share psi. Locations and scales are component-specific, as is NIG skewness;
+`--location` fixes every component location (not necessarily its mean).
+`--mixture-starts` (default 5), `--mixture-seed` (12345),
+`--mixture-min-weight` (.01), and `--mixture-eigen-floor` (1e-4 in sample-SD-scaled
+scatter units) control fitting. The joint fitter's shape/skewness bounds apply.
+`--fit-timeout` applies separately to each fit, including all its starts.
+
+The original single-fit table is retained. A compact aggregate table ranks all
+single and multicomponent fits within each asset/window by AIC and BIC, including
+finite scores from non-converged fits with status shown. Mixture information
+criteria are descriptive; optimization and mixture nonregularity warrant caution.
+Component weights, actual means, and SDs print in decreasing weight order, in
+per-period return units. Undefined moments are marked unavailable.
+
+The output CSV includes mixture rows with a JSON `mixture_fit` field; reconstruct
+them using `fitted_distribution(row)` for density, CDF, quantiles, sampling, and
+`risk(confidence)` (positive-loss VaR/ES). `--show-plot` and the existing univariate
+distribution-distance options also include successful mixtures. `--no-save`
+suppresses all file output as usual. This does not add mixture selection to the
+copula fitter or to the joint CLI's separate `--univariate` fits.
+
+## Univariate skewed GED
+
+For univariate fits, `laplace-skewed` is a synonym for SciPy's
+`laplace_asymmetric`; saved results use the canonical name `laplace_asymmetric`.
+This alias does not select the joint `asymmetric-laplace` mixture model.
+
+`ged-skewed` is an opt-in Fernandez--Steel two-piece generalized error
+distribution. `ged` remains symmetric, and default model lists are unchanged.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models ged ged-skewed student-t --days 1260
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --marginal-models ged ged-skewed --days 1260
+```
+
+For `z=(x-loc)/scale`, with symmetric SciPy GED density `g_p`, the density is
+`2*g_p(z*exp(skewness))/(scale*(exp(skewness)+exp(-skewness)))` on the left
+of `loc`; on the right, replace `exp(skewness)` inside `g_p` by
+`exp(-skewness)`. The four parameters are `power`, `skewness`, `loc`, and `scale`.
+Zero skewness recovers the symmetric GED exactly; positive skewness lengthens
+the right side. This matches the existing Fernandez--Steel t convention.
+Location is the mode, not generally the mean or median; scale is not generally
+the standard deviation. All moments exist for positive power.
+
+This is the same family as the
+[Fernandez--Steel skewed GED in tsdistributions](https://search.r-project.org/CRAN/refmans/tsdistributions/html/sged.html),
+but uses location/scale and log-skewness rather than that package's
+mean/standard-deviation and positive skew-ratio parameterization. The implementation
+uses NumPy/SciPy; no external implementation was copied.
+
+The nine-start bounded MLE uses powers 0.75, 1.5, 3 and skewness -0.5, 0, 0.5.
+Fit bounds are power `[0.1,10]`, skewness `[-3,3]`, and standardized log scale
+`[-12,12]`. Boundary and nonconverged fits remain visible and unranked.
+`--location` can fix the location, reducing the parameter count to three.
+Saved fits reconstruct the density, CDF, quantiles, random samples, and moments:
+
+```python
+from return_distributions.fitting import fit_one, fitted_distribution
+from return_distributions.tail_risk import portfolio_risk
+
+fit = fit_one(returns, 'ged-skewed')
+if fit['status'] == 'ok':
+    distribution = fitted_distribution(fit)
+    risk = portfolio_risk(distribution, confidence=.99)  # positive-loss VaR and ES
+```
+
+Skewed GED marginals work with two-stage Gaussian/Student-t copulas and copula
+portfolio simulation. Joint marginal/copula MLE refinement and a standalone
+multivariate skewed GED family are not implemented.
+
+### Fernandez--Steel skew-normal
+
+`fs-skew-normal` fixes the skewed GED power at 2 and estimates skewness,
+location, and scale (three parameters, or two with `--location`). Zero
+skewness recovers a normal with standard deviation `scale/sqrt(2)`.
+This is a two-piece normal, distinct from Azzalini's `skewnorm`.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal skewnorm fs-skew-normal --days 1260
+```
+
+Saved fits retain `power=2` without counting it as estimated. Fits use three
+skewness starts (-0.5, 0, 0.5), bounds `[-3,3]` on skewness, and `[-12,12]`
+on standardized log scale. Boundary/nonconverged fits are unranked.
+Density, CDF, quantiles, sampling, univariate VaR/ES, and two-stage copula
+marginals are supported. Joint marginal/copula refinement is not supported.
+Defaults are unchanged.
+
+## Univariate generalized t
+
+`generalized-t` implements the symmetric McDonald--Newey generalized t;
+`generalized-t-symmetric` is an alias. `generalized-t-skewed` adds the same
+Fernandez--Steel two-piece skewness used by `ged-skewed`. Both are opt-in.
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t ged ged-skewed generalized-t generalized-t-skewed --days 1260
+```
+
+With `z=(x-loc)/scale`, the symmetric density is
+`p/(2*scale*q**(1/p)*B(1/p,q)) * (1+abs(z)**p/q)**(-q-1/p)`.
+The shape parameters are saved as `power` (p) and `q`. At p=2 it is Student-t
+with df=2q and Student-t scale `scale/sqrt(2)`; as q tends to infinity it
+approaches the existing GED with power p and unchanged location/scale.
+See [McDonald and Newey (1988)](https://www.cambridge.org/core/journals/econometric-theory/article/abs/partially-adaptive-estimation-of-regression-models-via-the-generalized-t-distribution/FFA9EC7450CA18D1A133B019A3AE6D16).
+
+The symmetric model estimates four parameters; the skewed form estimates five.
+Skewness zero recovers symmetry. Location is the mode and scale is not the
+standard deviation. Fixing `--location` removes one estimated parameter.
+Absolute moments of order r exist only when `tail_index = power*q > r`.
+The code reports undefined moments as missing, divergent variance/kurtosis
+where appropriate as infinite, and ES as infinite when the tail index is at
+most 1. Finite ES uses an incomplete-beta partial-moment formula, including
+cases with a finite mean but infinite variance.
+
+Fits use bounded multistart Nelder--Mead: power `[0.2,10]`, q `[0.1,1000]`,
+skewness `[-3,3]`, and standardized log scale `[-12,12]`. Initial (p,q) pairs
+are (1,4), (2,2), (1,30), (2,30), (3,2); skewed fits try skewness -0.4, 0, 0.4.
+Boundary/nonconverged fits are unranked. A large-q boundary may indicate a
+GED limit; compare the separately fitted GED rather than treating the capped
+q estimate as a precise tail estimate.
+
+Saved fits support density/CDF/quantile evaluation, sampling, and univariate
+VaR/ES through `fitted_distribution` and `portfolio_risk`, as illustrated above.
+Two-stage copulas accept these models with `--marginal-models`; joint
+marginal/copula MLE refinement is not implemented. A symmetric elliptical
+joint generalized t and a Cholesky-coordinate two-piece skewed extension are
+available below. Existing joint Student-t models are unchanged.
+
+## Johnson SU and Crystal Ball
+
+These opt-in univariate models use SciPy densities, CDFs, quantiles, and sampling,
+with project-specific bounded fitting and tail-risk checks:
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t johnson-su-symmetric johnson-su crystal-ball --days 1260
+```
+
+- `johnson-su`: four parameters (a, b, location, scale), with skewness and
+  tail flexibility. `johnson-su-symmetric` fixes a=0 and estimates three.
+  All moments exist mathematically. The representation is
+  `X=loc+scale*sinh((Z-a)/b)` for standard-normal Z. Location is not generally
+  the mean and scale is not the standard deviation.
+- `crystal-ball`: four parameters (beta, m, location, scale), with a Gaussian
+  core/right tail and a power-law left tail below `loc-beta*scale`. This is
+  the left-tailed version, not a reflected or two-sided extension. Absolute
+  moments of order r exist only for m>r+1: mean and ES require m>2, variance
+  m>3, skewness m>4, and kurtosis m>5. `tail_index` is m-1.
+
+Definitions: [SciPy Johnson SU](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.johnsonsu.html)
+and [SciPy Crystal Ball](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.crystalball.html).
+`johnsonsu`, `johnson-su-skewed`, and `crystalball` remain accepted aliases;
+saved unrestricted fit names are `johnsonsu` and `crystalball` for compatibility.
+Help shows only the preferred hyphenated names. Defaults are unchanged.
+
+Both families use bounded multistart Nelder--Mead. Johnson SU starts at
+a=-1,0,1 and b=0.7,1.5,3 (only a=0 for symmetric fits), with bounds
+a in [-10,10] and b in [0.25,20]. Crystal Ball starts at (beta,m)=(1,3),
+(2,3), (1,8), (2,8), (3,20), with beta in [0.1,10] and m in [1.05,100].
+Both bound standardized log scale to [-12,12]; `--location` removes one
+estimated parameter. Boundary and nonconverged fits remain visible but unranked.
+Boundary fits may indicate a limiting family or weak identification rather
+than a precisely estimated tail; compare the separately fitted normal as well.
+
+Saved fits support univariate VaR/ES and two-stage copula marginals, but not
+joint marginal/copula MLE refinement or standalone multivariate versions.
+ES uses analytic partial moments for both families. Crystal Ball ES is
+explicitly infinite for m<=2, and remains computable for 2<m<=3 despite
+infinite variance. Its moment wrapper avoids large intermediate powers and
+distinguishes divergent moments from numerical fitting failures; density,
+CDF, quantile, and sampling calculations continue to use SciPy.
+
+## Screen-only runs
+
+Add `--no-save` to the univariate, joint, or copula fitting program to keep
+results on screen without writing files:
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t --no-save
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t generalized-t --weights SPY=0.6 TLT=0.4 --no-save
+python asset_copula_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --no-save
+```
+
+Fitting, tables, warnings, timing, and exit status are unchanged. All result
+files are skipped, including joint portfolio-risk CSVs and copula marginal
+audit files. No output directories are created and existing files are left
+untouched. `--output` and `--portfolio-output` paths are ignored in this mode.
+The univariate program's `--show-plot` still works. Saving remains the default.
+
+## Separate univariate fits alongside joint fits
+
+### Comparing fitted distributions
+
+Optional comparison matrices are available separately for each historical window:
+
+```cmd
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t laplace ged --days 1260 --js-distance --ks-distance --kl-divergence --no-save
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t generalized-t generalized-t-skewed --days 1260 --js-distance --simulations 100000 --no-save
+```
+
+- `--js-distance`: square-root Jensen--Shannon divergence with base-2 logs,
+  symmetric and between 0 and 1. Zero means identical fitted distributions.
+- `--ks-distance`: maximum absolute difference of univariate fitted CDFs,
+  symmetric and between 0 and 1. This is not the fit-versus-data KS statistic,
+  and no ordinary KS test p-value is attached.
+- `--kl-divergence`: directional KL in nats, **row P to column Q**. It need not
+  equal the reverse comparison and can be infinite. Cross-entropy is not reported.
+
+The joint CLI computes JS for the joint distributions. Add `--univariate` to
+also compare separately estimated univariate counterparts; joint CLI
+`--ks-distance` and `--kl-divergence` require that flag and apply only to those
+univariate fits. There is no multivariate KS or KL option here.
+
+Univariate JS/KL use adaptive integration, standardized coordinates, and
+quantile breakpoints; displayed uncertainty is the numerical quadrature error
+estimate, not a statistical standard error or a certified bound. KS uses a
+quantile grid and local maximization, with tail CDF cutoff 1e-9; it is not a
+certified global maximum for arbitrary multimodal distributions.
+
+Joint JS samples once per successful fit and reuses those draws across pairs.
+It averages the bounded conditional-label-entropy integrand under an equally
+weighted mixture of the two distributions. Log densities are evaluated after
+aligning coordinates by symbol. `--simulations`, `--seed`, and `--mc-batches`
+control reproducible sampling and approximate batch/delta-method distance SEs;
+these do not include parameter uncertainty and are less reliable near zero.
+The calculation does not require finite means or variances. Many models, or
+models with expensive densities, can make pairwise comparisons slow.
+
+Failed/boundary fits are excluded explicitly. Numerical comparison failures
+remain `n/a` with explanations and cause a nonzero exit status; they are not
+replaced by zero. A proven infinite KL (Student-t with df<=2 to a normal) is
+reported as infinite, while other unresolved tail integrals remain failures,
+not claims of mathematical infinity. All comparisons are descriptive and
+conditional on the fitted parameters, not tests of equality.
+
+Unless `--no-save` is supplied, `<output stem>_distances.csv` stores the full
+pairwise results, numerical errors, methods, failures, and sample identifiers.
+The fit-result file schemas are unchanged. Distances for different assets or
+windows are never combined into one matrix.
+
+### Separate fits
+
+Add `--univariate` to `asset_joint_distributions.py` to print independent
+univariate fits for every asset, using the existing univariate fitter and
+table formatting:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t ged generalized-t --days 252 1260 --univariate --no-save
+```
+
+Each asset uses exactly the joint fit's complete-case observations and window,
+not its longer individually available history. These are separately estimated
+univariate fits, **not implied marginals of the joint fit**. Compare their
+AIC/BIC only within the same asset/window, never directly against joint scores.
+
+The command prints the joint-to-univariate mapping. Most names map directly;
+noncentral-t maps to `nct`, SDB skew-normal to `skewnorm`, SDB skew-t to
+`azzalini-skew-t`, the symmetric Laplace mixture to `laplace`, and the asymmetric
+Laplace mixture to `laplace_asymmetric`. These are one-dimensional counterparts;
+in particular the elliptical GED/Laplace, generalized-t, and dimension-specific
+hyperbolic fits do not imply those exact univariate marginals in general.
+Shared counterparts are fit once per asset/window. Slash variants currently
+have no registered univariate fitter and are explicitly reported as skipped.
+
+`--location`, `--max-iterations`, and `--return-type` also apply to the separate
+fits. Joint Laplace location pilots/default-zero do not constrain them: without
+`--location`, their univariate locations are estimated freely. Failed univariate
+fits remain visible and produce a nonzero exit status, but do not stop the
+other fits; unsupported mappings are reported skips, not numerical failures.
+
+Unless `--no-save` is given, a separate `<output stem>_univariate.csv` contains
+the usual univariate results plus source joint-model names and sample metadata.
+The existing joint JSON/CSV and portfolio-risk outputs are unchanged.
+
 ## Joint distribution fits
 
 ```cmd
@@ -71,6 +486,9 @@ same complete-case sample for each requested window. Price gaps are never filled
 and `--output joint_distribution_fits.json` are supported. The JSON contains
 locations, scatter and covariance matrices, symbol order, dates, diagnostics,
 and optimization attempts; the accompanying CSV contains the comparison table.
+The printed comparison moves values shared by all fits above the table, omits
+entirely missing columns, and displays remaining missing entries as `n/a`.
+Model-specific fields remain visible; the saved CSV retains its full schema.
 Files with these output names are replaced on a subsequent run.
 
 ```python
@@ -253,7 +671,474 @@ units). With a custom fit `--output`, the risk filename uses that stem;
 own model and empirical rows, dates, observation counts, and weights. Existing
 output files are replaced; input files and overlapping output paths are protected.
 
+### Joint generalized t
+
+The skewed counterpart is available as `--models generalized-t-skewed` (also
+included in `--models all`). It is an explicitly specified two-piece radial
+construction, not a claim that there is a unique multivariate skewed generalized t.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t generalized-t generalized-t-skewed --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+Let `L` be the lower-triangular Cholesky factor of scatter, `y=L^-1(x-mu)`,
+and `s` a vector of log-skew parameters. Replace each negative `y_i` by
+`y_i*exp(s_i)` and each nonnegative `y_i` by `y_i*exp(-s_i)` in the spherical
+generalized-t density below; divide the resulting density by
+`det(L)*product(cosh(s_i))`. Zero skew reduces exactly to the symmetric model;
+in one dimension it is the existing Fernandez--Steel skewed generalized t.
+Unlike an affine combination of independent univariate variables, the latent
+coordinates here share the same generalized-t radial variable.
+
+This Cholesky construction is **asset-order dependent** when skew is nonzero.
+Skew parameters refer to Cholesky coordinates, not individual asset marginal
+skewness. Positive `s_i` lengthens the positive side of that coordinate.
+Location is the joint mode, not the mean; scatter is not covariance. The
+implementation computes the mean, covariance, and return correlation from
+radial/angular moments. Mean and covariance require `power*q>1` and `>2`.
+
+There are d additional parameters, bounded to [-3,3]. Each of the five radial
+starts below is tried with all skew parameters initially -0.25, 0, or 0.25.
+These are local numerical MLE fits; inspect convergence and compare alternate
+asset orders before drawing conclusions. No rotation-invariance is claimed.
+Portfolio sums are not assumed to follow the univariate skewed generalized t:
+both the joint CLI and the saved-fit portfolio CLI use reproducible Monte Carlo
+with `--simulations`, `--seed`, and `--mc-batches`. ES is reported infinite when
+`power*q<=1` for any nonzero portfolio. Monte Carlo error estimates are not
+parameter uncertainty. `--univariate` also supports this family, fitting the
+univariate counterpart separately rather than reporting implied marginals.
+
+### Multivariate normal tempered stable (NTS)
+
+`nts-symmetric` and `nts-skewed` (alias `nts`) extend the existing univariate
+NTS parameterization. Both are opt-in, included in `--models all`, and are
+order-invariant: `--asset-orders all` does not repeat them.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t nig nts-symmetric nts --days 252 --fit-timeout 120 --weights SPY=0.6 TLT=0.4 --risk-levels .95 .99 --no-save
+```
+
+For independent standard multivariate normal Z and positive mixing variable W:
+
+```text
+X = mu + gamma*W + sqrt(W)*L*Z,     L*L' = scatter
+log E[exp(s*W)] = lam/alpha * (1 - (1-s/lam)**alpha)
+E[W] = 1,                       Var(W) = (1-alpha)/lam
+E[X] = mu + gamma
+Cov(X) = scatter + (1-alpha)/lam * gamma*gamma'
+```
+
+The same W is shared across assets, not drawn separately for each asset.
+Symmetric NTS fixes gamma to zero. All moments exist; mu is not generally the
+mean and scatter is not generally covariance. At alpha=1/2 this is an NIG
+family; as alpha tends to zero the mixer approaches Gamma(lam, rate=lam),
+giving VG; as alpha tends to one the mixer becomes constant and the model
+approaches normal with mean mu+gamma. These are theoretical limits, not claims
+that fitting at restricted parameter boundaries reaches those limits.
+See [Portfolio Analysis with Multivariate Normal Tempered Stable Processes](https://publikationen.bibliothek.kit.edu/1000029600).
+
+Density evaluation integrates the conditional Gaussian density over W. The
+mixing density uses an angular positive-stable integral and exponential
+tilting; the implementation is derived independently, not copied from an
+external package. Sampling reuses the univariate exact tilted-stable sampler.
+Linear portfolio projections use the existing univariate NTS density, CDF,
+quantile, and Fourier partial-moment ES code. `--js-distance` and `--univariate`
+are supported. No multivariate CDF is supplied.
+
+This is a numerically integrated, bounded MLE for small asset panels. Three
+starts use alpha=.25,.5,.75 and lam=2. Bounds are alpha [0.1,0.9], lam [0.1,30],
+standardized gamma components [-5,5], and standardized log Cholesky diagonals
+[-6,6]. There are d+d*(d+1)/2+2 parameters for symmetric fits and d more for
+skewed fits, minus d if location is externally fixed. Near-normal samples may
+hit a bound; those fits remain unranked rather than being labeled successful.
+
+`--nts-quadrature-points` defaults to 256 (allowed 64--1024). It sets the
+mixing and angular quadrature orders during fitting. A final audit doubles the
+orders and tightens Chernoff mixing-tail bounds from 1e-12 to 1e-16. Mixing mass
+must be within 2e-5 of one and is never silently renormalized. Audit success
+requires total log-likelihood change <=0.01 and maximum per-observation
+log-density change <=0.001. Failed audits are unranked and excluded from risk
+and distance comparisons; increasing quadrature resolution may help. Numerical
+checks are not a proof of a global likelihood maximum or a rigorous bound on
+every tail density. Saved fits use the finer rule and record audit diagnostics.
+Fitting and large JS comparisons can be slow; `--fit-timeout` covers fitting
+and its audit, but not subsequent comparisons or portfolio risk.
+
+### Multivariate skewed GED and FS skew-normal
+
+`ged-skewed` adds Fernandez--Steel two-piece skewness in Cholesky
+coordinates to the elliptical GED. `fs-skew-normal` fixes its power at 2;
+zero skewness then gives a multivariate normal. Both have finite moments
+of every order. Location is the mode, not generally the mean, and scatter
+is not covariance. The printed correlation uses the actual fitted covariance.
+
+These constructions depend on asset order. Compare both orderings for two
+assets, optionally displaying only the highest-likelihood ordering:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t ged ged-skewed fs-skew-normal --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+GED power is estimated within [0.25,10]; log-skewness parameters are bounded
+by [-3,3]. Positive skewness lengthens the positive side of a Cholesky
+coordinate. General multivariate marginals and portfolio projections need
+not remain in the univariate skewed-GED family. Portfolio VaR/ES therefore
+use simulation, with Monte Carlo standard errors. `--univariate` fits the
+existing univariate counterparts separately on the same complete-case sample.
+Ordering selection uncertainty is not included in AIC/BIC or risk errors.
+
+### Lagged EWMA volatility normalization
+
+Add `--standardize-vol ewma` to fit joint distributions to returns divided
+by a strictly trailing RiskMetrics-style standard deviation. The default
+decay is 0.94 (approximately 11.2 observations of half-life):
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --models student-t azzalini-skew-t noncentral-t generalized-t-skewed --standardize-vol ewma --vol-lambda .94 --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+For each asset, `h[t] = lambda*h[t-1] + (1-lambda)*return[t-1]**2`
+and `z[t] = return[t]/sqrt(h[t])`. No sample-mean subtraction is used.
+The first `--vol-warmup` observations (default 63) seed the variance with
+their mean squared return and are excluded from fitting. The filter uses
+available history **before** selecting each `--days` window. Missing returns
+reset that asset's filter and require a fresh warmup; only common eligible
+observations are fitted. `--vol-floor` is the minimum standard deviation
+in original return units (default 1e-8).
+
+Use `--vol-halflife H` instead of `--vol-lambda`; they are mutually exclusive.
+`--vol-lambda` accepts several decays, for example `--vol-lambda .94 .96`.
+Each distinct filter is computed once and reused across models/windows.
+With `--standardize-vol none ewma`, raw fits run once per window, followed
+by EWMA fits for each lambda. All variants use the intersection of eligible
+dates. Fits, portfolio risk, univariate results and mixture comparisons
+identify the lambda; joint distance labels distinguish each variant. Best
+asset orders are selected separately for each model/window/lambda. Repeated
+lambda values are deduplicated, preserving their first occurrence.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t --max-components 2 --standardize-vol none ewma --vol-lambda .94 .96 --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+To compare raw and standardized fits in one run, use:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 1260 --models student-t noncentral-t generalized-t-skewed --standardize-vol none ewma --vol-lambda .94 --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --js-distance --no-save
+```
+
+Both variants use exactly the same dates, excluding filter warmup and other
+ineligible rows from **both**. The filter is computed once. Best asset orders
+are selected independently within each normalization/model/window; the joint
+summary compares all accepted fits using return-unit AIC/BIC. Fit and risk
+outputs identify `vol_standardization`. Separate univariate fits and their
+distance comparisons are computed within each normalization and labeled in
+saved outputs. Location restrictions apply in each fit's own input units.
+
+The joint JS matrix includes cross-normalization pairs in original return
+units: raw unconditional distributions versus EWMA next-period conditional
+distributions. This measures their difference at the latest volatility
+scales, not an average difference across historical dates. Portfolio risk
+tables likewise distinguish unconditional historical risk from next-period
+conditional risk, with a separate empirical reference for each variant.
+
+Decay and half-life refer to input observations: these are trading days only
+when the input consists of daily returns. Raw returns remain the default.
+
+Parameters, location restrictions, moments and fitted correlations describe
+**standardized returns**. Joint and separate univariate log likelihoods are
+converted to original return units by subtracting the sum of log trailing
+standard deviations; AIC/BIC receive the corresponding adjustment. Compare
+raw and normalized scores only on identical dates and observations. These
+are conditional scores treating the filter settings as fixed; choosing the
+filter from the same data adds selection uncertainty not counted by AIC/BIC.
+Joint distribution-distance calculations use original return units, rescaling
+EWMA laws at next-period volatility. With EWMA alone, this common rescaling
+leaves JS distances unchanged. Separate univariate distance comparisons remain
+within each normalization's input units.
+
+Portfolio VaR/ES are **next-input-period conditional forecasts**: multiply
+each standardized asset return by its next-period EWMA SD, then apply the
+original portfolio weights. The empirical row is filtered historical
+simulation at those same scales, not an unconditional raw-return estimate.
+Monte Carlo errors do not include parameter or volatility-filter uncertainty.
+
+Saved fit JSON retains standardized distribution parameters, the original
+standardized log likelihood, filter settings, Jacobian adjustment, and
+next-period volatility scales in the saved symbol order. The portfolio CLI,
+`project_distribution` and `simulate_joint_portfolio` automatically use those
+scales; `joint_distribution` reconstructs the standardized innovation law.
+Saved forecasts use scales as of the fit's last date, not newly downloaded data.
+
+### Finite normal, Student-t, GED and skewed-NIG mixtures
+
+`--max-components K` fits one through K components for selected mixture
+families: `normal`, `student-t`, `ged` and `nig-skewed` (alias `nig`). Other families are fitted once. The
+default is 1 (existing behavior); K is limited to 8 as a workload safeguard.
+These are within-family finite mixtures, not normal-plus-t mixtures.
+
+Use `--mixture-models` to choose mixture families independently of `--models`:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t noncentral-t nig-skewed --mixture-models normal student-t ged --max-components 2 --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+Any missing single-component baselines (GED in this example) are added and
+fitted once per window/volatility variant. The detailed table includes those
+baselines; the compact mixture table includes only the selected mixture
+families and their baselines. Omitting `--mixture-models` retains automatic
+selection of supported families from `--models`. Use `--mixture-models all`
+to request this explicitly: only supported families in `--models` get mixtures,
+and other requested models still get single-component fits. For example,
+`--models normal student-t noncentral-t --mixture-models all --max-components 2`
+fits normal and Student-t mixtures, but only a single noncentral-t distribution.
+`all` must be used alone; combine `--models all --mixture-models all` to select
+every implemented mixture family. An explicit list (including `all`) requires
+`--max-components >=2`; unsupported mixture families are rejected immediately.
+
+An additional aggregate multivariate comparison table includes all displayed
+single-component and mixture fits, with parameter counts, log likelihood,
+AIC, BIC, both ranks, fit times, and status. Ranks compare all families,
+component counts, and volatility settings within each window. Every finite
+criterion is ranked, including non-converged fits; inspect status before
+selecting a model. `--best-asset-order` also applies to this table. The existing
+detailed and mixture-only tables are retained.
+
+For each fitted mixture, the console also prints each component's weight,
+asset means and standard deviations, and return correlation matrix. These
+are actual moments, not location/scatter parameters. They are per input
+period (not annualized), in return units for raw fits or standardized units
+for EWMA fits. Undefined Student-t moments are reported as unavailable.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t --max-components 2 --standardize-vol none ewma --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --no-save
+```
+
+The existing detailed joint-fit table continues to show only single-component
+fits. A separate compact **finite mixture comparison** shows model, number of
+components, normalization (if requested), parameter count, log likelihood,
+AIC/BIC, status and elapsed time, with shared sample information above it.
+The one-component fits are reused as baselines, not refitted. Portfolio VaR/ES
+and joint JS matrices include all accepted mixtures, labeled by component count.
+`--univariate` continues to fit the separate single-component univariate
+counterparts; it does not add univariate mixtures.
+
+Each component has its own location and full scatter. Student-t components
+share one estimated degrees-of-freedom parameter, bounded to [0.25,200].
+GED components share one estimated power, bounded to [0.25,10]. These are
+elliptical GED components: their univariate marginals/projections need not
+be univariate GED. Power 2 gives normal components with covariance=scatter/2.
+For dimension d and K components, the free-location parameter count is
+`K*(d+d*(d+1)/2)+(K-1)`, plus 1 for shared t degrees of freedom or GED power. With
+`--location`, every component has that fixed location and K*d parameters
+are removed. Sample-SD scaling and filter settings are treated as fixed
+preprocessing, not fitted distribution parameters.
+
+The fitter uses EM (normal) or ECM (t), with `--mixture-starts 5` by default:
+the nested one-component solution plus radius/directional splits, including
+seeded random directions (`--mixture-seed 12345`). The highest-likelihood
+start is retained; a best start that has not converged retains that status.
+`--max-iterations` limits each start and `--fit-timeout` limits the entire
+mixture fit, including its starts.
+
+Skewed-NIG mixtures give each component its own location, scatter, and skew
+vector `gamma`, while sharing one estimated `psi`. Every component uses
+`chi=1` and GIG `lambda=-0.5`, matching the existing NIG parameterization.
+Their free-location parameter count is `K*(2*d+d*(d+1)/2)+(K-1)+1`;
+fixing location removes K*d parameters. Component locations are not means:
+the mixture's moments use each NIG component's actual mean and covariance.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t nig-skewed --mixture-models nig-skewed --max-components 2 --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --fit-timeout 120 --no-save
+```
+
+NIG mixture fitting uses direct bounded optimization with the same scatter
+and weight safeguards as GED. Shared log(psi) is bounded to [-12,12]; each
+component gamma coordinate is bounded to [-10,10] in sample-SD units.
+Starts reuse the NIG baseline and add radius/directional splits and seeded
+skewness perturbations. The highest-likelihood start is retained, even if
+not converged; its status qualifies its AIC/BIC ranks, and only accepted fits
+enter portfolio risk. These models can be slower and harder to fit than
+normal/t mixtures, so multiple starts and a fit time limit are useful.
+Portfolio projections remain finite mixtures of univariate NIG laws; VaR
+uses their mixture CDF and ES uses checked tail integration at the common
+portfolio quantile. All moments exist. EWMA rescaling, JS comparisons and
+saved-fit portfolio calculations are supported.
+
+GED mixtures use bounded direct likelihood optimization rather than normal/t
+EM updates. Starts include the nested GED baseline and radius/directional
+splits. Scatter is parameterized as `L L' + eigen_floor I` in sample-SD
+coordinates, with factor log diagonals bounded to [-12,12]. Mixture weights
+use a shifted softmax with relative logits bounded to [-20,20]. Power, weight,
+scatter and numerical-boundary fits are flagged. GED mixture fitting and
+projected tail calculations may take longer than normal mixtures.
+
+Unrestricted mixture likelihoods can diverge as a component collapses.
+`--mixture-min-weight .01` and `--mixture-eigen-floor 0.0001` guard against
+this. The eigenvalue floor applies to component **scatter**, after dividing
+each asset by its sample SD. Fits hitting weight, scatter or df bounds are
+flagged and excluded from risk. Multiple starts do not guarantee
+a global maximum; mixture AIC/BIC are descriptive because mixture models
+are nonregular. Out-of-sample testing remains important.
+
+A portfolio projection is itself a finite mixture. Its quantile is found by
+solving the weighted component CDF. ES uses analytic normal/t partial moments
+below that **common portfolio quantile**, not averaged component ES values.
+GED mixtures use the existing component projection CDFs and checked numerical
+tail integration at the common quantile; all their moments are finite.
+Student-t mixture ES is infinite for shared df <=1; covariance requires df >2.
+EWMA fits are rescaled using the saved next-period volatility before projection.
+
+With saving enabled, the JSON contains component weights/parameters and
+optimizer diagnostics. The full summary CSV retains all fits, and
+`<output stem>_mixtures.csv` saves the compact comparison including baselines.
+It includes four ranks per window: `aic_rank_family` and `bic_rank_family`
+compare component counts and volatility settings within each distribution;
+`aic_rank_all` and `bic_rank_all` compare all rows across distributions.
+Each includes every finite value of its criterion, even for non-converged or
+boundary fits; check the status before interpreting a rank. Missing/infinite
+criteria are independently unranked, and ties share the minimum rank (1, 1, 3).
+The detailed single-component table and portfolio-risk acceptance rules are
+unchanged.
+
+Univariate fit tables (including `--univariate` in the joint program) and
+the detailed joint table report `aic_rank` and `bic_rank` instead of the former
+ambiguous `rank` column. Both use the existing successful-fit eligibility
+and sample/window grouping; BIC ranks do not change the AIC-based univariate
+row order. These explicit names are also used in saved CSV files. Historical
+example outputs elsewhere in this README may show the older column names.
+
+### Fit-timeout options
+
+Both fitting programs accept `--fit-timeout SECONDS`. By default there is no
+time limit and no worker-process overhead.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models all --asset-orders all --fit-timeout 60 --no-save
+python asset_return_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t generalized-t --fit-timeout 30 --no-save
+```
+
+The limit is separate for each model/window/order/location choice and for each
+asset/model/window in separate univariate fits (including `--univariate`). It
+covers the complete fit, all optimizer starting guesses, and fit diagnostics,
+not each starting guess individually. Each timed call runs in a fresh spawned
+process that is terminated at the deadline. Worker startup counts toward the
+limit; startup/cleanup overhead may extend observed wall time slightly. Very
+short limits can therefore time out even inexpensive normal fits.
+
+Expired fits have `status=timeout`, an explanation, and elapsed `fit_sec`.
+They are saved alongside other results but excluded from rankings, portfolio
+risk, and distribution comparisons. Remaining fits continue, and the program
+returns a nonzero exit status if any fit timed out. No partially optimized
+result is accepted. `--no-save` still suppresses all result files. Subsequent
+VaR/ES, JS/KS/KL comparisons, output, and plotting are **not** timed by this flag.
+When calling timed fits from your own Python script on Windows, call them under
+an `if __name__ == '__main__':` guard, as the supplied command wrappers do.
+
+### Asset-order options
+
+Add `--best-asset-order` to `--asset-orders all` to display only the accepted
+ordering with the highest finite log likelihood for each order-dependent
+family/window. Order-invariant references remain visible. A selection summary
+reports the winning order, successful/attempted counts, and the likelihood gap
+to the runner-up; exact ties retain the first attempted order. If no order
+succeeds, no winner is selected. Failed/time-limited fits cannot win.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t generalized-t generalized-t-skewed --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --js-distance --no-save
+```
+
+This filters displayed fit details, comparison tables, VaR/ES, and the JS matrix;
+progress messages still identify every attempted fit. It does **not** reduce
+fitting or comparison work. All orderings, risks, and pairwise distances remain
+in saved files, with `selected_for_display` flags (JS also has `selected_p` and
+`selected_q`). Displayed ranks are calculated among the displayed fits; saved
+ranks retain the full comparison. Separate univariate fits are unaffected.
+Selection uncertainty still is not included in ordinary AIC/BIC.
+
+`--asset-orders all` fits every permutation only for order-dependent models
+(currently `generalized-t-skewed`). Other joint families are fitted once per
+window/location choice; `--univariate` fits are also not repeated. The default,
+`--asset-orders given`, retains the supplied column order and existing behavior.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t generalized-t generalized-t-skewed --asset-orders all --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995 --js-distance --no-save
+```
+
+Each ordering uses exactly the same complete-case observations. Portfolio
+weights are matched by symbol, not column position. The fit and risk tables
+show `asset_order`, and the JS matrix includes all successful orderings plus
+the invariant reference fits, with densities aligned by symbol. Failed orders
+remain visible; risk ranges show the successful/attempted counts and include
+Monte Carlo noise. Selecting the best order adds model-selection uncertainty
+that ordinary AIC/BIC do not account for.
+
+Saved JSON records retain each fit's actual `symbols` order and an identifying
+`fit_label`; summary/risk CSVs retain `asset_order`. The saved-fit portfolio
+command preserves these labels and uses the correct weights for each ordering.
+
+The default safety cap is 24 permutations per order-dependent family/window.
+For five assets, explicitly pass `--max-asset-orders 120` to permit all 120 fits.
+The cap is checked before fitting any models. Increasing it can make both fitting
+and the pairwise JS matrix very expensive. It has no effect when no selected
+model is order dependent.
+
+### Symmetric radial definition
+
+`--models generalized-t` selects a symmetric elliptical radial extension of
+McDonald--Newey; `generalized-t-symmetric` is an accepted alias. It is included
+in `--models all`, but not in the default joint model list.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t ged generalized-t --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995
+```
+
+For d assets, location mu, positive-definite scatter S, and
+`r=sqrt((x-mu)' S^-1 (x-mu))`, the density is
+
+```text
+p*Gamma(d/2) / [2*pi**(d/2)*sqrt(det(S))*q**(d/p)*B(d/p,q)]
+    * (1+r**p/q)**(-q-d/p)
+```
+
+Equivalently, `X=mu+L*R*U`, where `L*L'=S`, U is uniform on the unit sphere,
+and `R**p/q ~ BetaPrime(d/p,q)` independently of U. This specifies the
+particular extension implemented; “multivariate generalized t” can describe
+different constructions. Related families are studied by
+[Arslan and Genc](https://www.sciencedirect.com/science/article/pii/S0047259X03001647).
+The implementation and its projections are derived from the radial definition
+above, not copied from an external implementation.
+
+- In one dimension this is the existing symmetric univariate generalized t.
+- At p=2 it is multivariate Student-t with df=2q and Student-t scatter S/2.
+- As q tends to infinity it approaches the existing elliptical GED with power p
+  and scatter S.
+- Mean exists for p*q>1; covariance exists for p*q>2 and equals
+  `S*q**(2/p)*B((d+2)/p,q-2/p)/(d*B(d/p,q))`. Missing moments are saved as null,
+  not replaced by truncated numerical estimates. Scatter correlation is not
+  labeled Pearson correlation when covariance does not exist.
+
+There are `d+d*(d+1)/2+2` estimated parameters, or d fewer with fixed location.
+Five starts use (p,q)=(1,4),(2,2),(1,30),(2,30),(3,2). Bounded L-BFGS-B fits
+p in [0.25,10], q in [0.1,1000], and standardized log Cholesky diagonals in
+[-12,12]. Boundary/nonconverged fits remain unranked and unavailable for
+portfolio risk. A large-q boundary may indicate a GED limit; compare the GED
+fit directly rather than interpreting the capped q as a precise estimate.
+
+General marginals and linear portfolios **are not simply univariate generalized
+t with the same p and q**. Projection retains the original d and uses checked
+one-dimensional quadrature for densities, tail probabilities, and radial first
+partial moments; quantiles use root finding. Student-t and d=1 cases use their
+univariate formulas directly. VaR/ES use the positive-loss convention, with
+infinite ES explicitly reported when p*q<=1, and finite ES allowed when
+variance is infinite. Signed and non-unit-sum weights are supported without
+normalization; log-return combinations retain the existing opt-in requirement.
+Saved fits also work with the standalone portfolio CLI and simulation runner.
+
 ### Joint Laplace and GED definition
+
+For the **normal–exponential-mixture** alternative, including asymmetric
+Laplace, see "Normal–exponential Laplace mixtures" below. The existing
+`laplace` name is unchanged.
 
 ```cmd
 python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --days 252 1260 --models normal laplace ged
@@ -349,6 +1234,108 @@ families can select their simpler special cases; one preset per family does not
 establish general performance across tail/skew/dependence parameters.
 
 Tests: `python -m unittest test_distribution_simulation test_joint_power test_joint_gh test_joint_distributions test_return_distributions -v`.
+
+## Normal–exponential Laplace mixtures
+
+Two optional joint models are available: `asymmetric-laplace` and
+`laplace-mixture-symmetric`. Both are included in `--models all`, but neither
+is in the default set. They are distinct from the existing power-exponential
+`laplace` model.
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models normal laplace laplace-mixture-symmetric asymmetric-laplace --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995
+```
+
+The construction is `X = location + W*gamma + sqrt(W)*Z`, with independent
+`W ~ Exp(1)` and `Z ~ N(0,scatter)`. It is the variance-gamma special case
+with mixing shape fixed at 1. The mean is `location+gamma`, covariance is
+`scatter+gamma*gamma'`, and all moments exist. The symmetric variant fixes
+`gamma=0`. See [Kozubowski and Podgórski's multivariate asymmetric Laplace
+distribution](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=257317).
+
+**Fitting restriction:** the density is singular at `location` in two or more
+dimensions. Estimating an unrestricted location permits an unbounded
+likelihood. Consequently, these two models fix location to zero by default;
+`--location VALUE` supplies a different, externally chosen value for every
+asset. The Python API also accepts a fixed location vector. In this default
+mode location is not estimated from the sample; pilot-based alternatives are
+described below. For the asymmetric model location is not the mean.
+This is a substantive restriction: with a zero origin, `gamma` is also the
+mean vector, so the sign of a projected portfolio's skewness is tied to the
+sign of its mean. It cannot independently fit a positive mean and negative
+skewness around that fixed origin. Compare this restricted model accordingly.
+An observation equal to the frozen location vector (within 64 machine eps
+in each asset's standard-deviation units) is rejected in
+dimension two or higher, without dropping the observation or flooring the
+density. Do not tune the fixed location to these observations and then treat
+it as a parameter chosen in advance.
+
+Multi-start bounded MLE estimates the full scatter and, for the asymmetric
+model, a skew vector. Standardized Cholesky log diagonals are bounded to
+`[-8,8]`, off diagonals and skew components to `[-20,20]`; boundary fits are
+flagged and excluded from portfolio risk. With fixed location, parameter
+counts are `d*(d+1)/2` for symmetric and `d*(d+1)/2+d` for asymmetric.
+The JSON and summary CSV record the fixed-location source and restriction.
+AIC/BIC refer to these restricted families, not free-location Laplace fits.
+Other families still estimate location by default; passing `--location 0`
+fixes it for all selected families if that comparison is desired.
+
+### Median and KDE-mode location pilots
+
+Compare location choices without rerunning unrelated model fits:
+
+```cmd
+python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT --models student-t asymmetric-laplace --laplace-location zero median mode --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .995
+```
+
+`--laplace-location` accepts one or more of `zero`, `median`, and `mode`.
+Duplicate choices are removed. Each selected Laplace-mixture family is fit
+once per location choice and window, while other families are fit only once
+per window. `zero` preserves the default. `median` freezes the vector of
+componentwise sample medians. `mode` freezes a **joint** Gaussian-kernel-density
+mode, not a vector of marginal modes and not a location obtained by maximizing
+the singular Laplace likelihood. The median is a robust pilot, not generally
+the population Laplace location under asymmetry.
+
+For the mode, `--laplace-mode-bandwidth` accepts `scott` (default), `silverman`,
+or a positive number such as `0.5`. A number is the KDE covariance bandwidth
+factor itself, not a multiplier of Scott's factor: kernel covariance equals
+sample covariance times the factor squared. The implementation uses the full
+covariance, standardized coordinates, and deterministic multiple starts
+(centers, high-density candidate observations, and sample-spread starts).
+All observations contribute to the KDE. The best converged pilot is retained;
+global optimality is not guaranteed and bandwidth can materially affect the
+answer. See [SciPy's Gaussian KDE documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html).
+The pilot bandwidth factor, density, and optimization attempts are saved.
+
+Median/mode are **two-stage estimates**, computed separately on each window's
+complete-case sample. Their `parameters` count includes `d` pilot location
+coordinates; `conditional_parameters` counts only the subsequent scatter/skew
+fit. Ordinary `aic`, `bic`, and `rank` are omitted for these fits. Separate
+`two_stage_aic` and `two_stage_bic` are descriptive plug-in scores using that
+total count, not jointly maximized-likelihood criteria. They do not account
+for KDE smoothing complexity, bandwidth selection, or model-selection
+uncertainty. Prefer held-out likelihood and risk calibration when choosing
+between location methods.
+
+The singularity check still applies to both pilots; collisions are reported
+as failures without jittering the location or dropping data. Successful
+two-stage fits remain usable for portfolio projections. Fit summaries, JSON,
+and both combined-run and saved-fit portfolio tables retain `location_method`
+so otherwise identical model names are distinguishable. These options apply
+only to Laplace-mixture models, cannot be combined with `--location`, and the
+bandwidth option requires a `mode` choice. From Python, use
+`fit_joint(x, 'asymmetric-laplace', laplace_location='mode', laplace_mode_bandwidth='scott')`.
+
+The existing VG density and simulation code is reused without relaxing the
+separate VG fitter's shape bounds. Portfolio projections are ordinary
+univariate asymmetric Laplace distributions, evaluated with SciPy's
+`laplace_asymmetric`, including quantiles and expected shortfall. The
+univariate CLI continues to accept `--models laplace_asymmetric`; its location
+can be estimated because the one-dimensional density is finite at its mode.
+No new dependency is required. Simulation-study presets for these joint
+models use fixed zero origins; the symmetric preset therefore has zero mean,
+unlike the common nonzero mean in most other presets.
 
 ## Portfolio distributions from joint fits
 
