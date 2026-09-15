@@ -36,5 +36,32 @@ class AllModelsTests(unittest.TestCase):
             self.assertIn('must be used alone',err.getvalue())
             reader.assert_not_called()
 
+    def test_model_notes_only_for_selected_families(self):
+        sample = pd.DataFrame({'A': np.arange(20.), 'B': np.arange(20.)},
+                              index=pd.bdate_range('2020-01-01', periods=20))
+        notes = {
+            'student-t': 'Student-t scatter',
+            'nig-skewed': 'NIG mixture:',
+            'hyperbolic-symmetric': 'Hyperbolic mixture:',
+            'gh-skewed': 'Generalized hyperbolic mixture:',
+            'laplace': 'Laplace is elliptical',
+            'ged': 'GED is elliptical',
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for model in ['normal', *notes]:
+                fit = dict(model=model, status='ok', observations=20, dimensions=2,
+                           parameters=5, loglik=10., aic=-10., bic=-5.)
+                with patch('return_distributions.joint_cli.read_returns', return_value=sample), \
+                     patch('return_distributions.joint_cli.fit_joint', return_value=fit), \
+                     contextlib.redirect_stdout(io.StringIO()) as console:
+                    self.assertEqual(main(['unused.csv', '--models', model, '--output',
+                                           str(Path(directory)/'fits.json')]), 0)
+                output = console.getvalue()
+                for family, note in notes.items():
+                    self.assertEqual(note in output, family == model, (model, note))
+                self.assertNotIn('GH mixture:', output)
+                if model == 'hyperbolic-symmetric':
+                    self.assertNotIn('location is not its mean', output)
+
 
 if __name__=='__main__': unittest.main()

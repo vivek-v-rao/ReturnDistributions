@@ -16,6 +16,15 @@ from return_distributions.joint_cli import main
 
 
 class TestModelAliases(unittest.TestCase):
+    def test_univariate_laplace_alias_fit(self):
+        x = np.random.default_rng(8).normal(size=100)
+        alias = fit_one(x, 'laplace-skewed')
+        canonical = fit_one(x, 'laplace_asymmetric')
+        self.assertEqual(alias['name'], 'laplace_asymmetric')
+        self.assertAlmostEqual(alias['loglik'], canonical['loglik'])
+        self.assertEqual(unique_models(['laplace-skewed', 'laplace_asymmetric']),
+                         ['laplace_asymmetric'])
+
     def test_resolution_and_api(self):
         x = np.random.default_rng(3).normal(size=(20,2))
         for alias, canonical in MODEL_ALIASES.items():
@@ -25,9 +34,13 @@ class TestModelAliases(unittest.TestCase):
             self.assertEqual((names,fixed), (expected_names,expected_fixed))
             if canonical in ALL_JOINT_MODELS:
                 self.assertEqual(preset(alias)['model'], canonical)
-                with patch('return_distributions.multivariate.fit_gh', return_value={}) as fitter:
+                target = 'fit_generalized_t' if canonical == 'generalized-t' else ('fit_nts_joint' if canonical.startswith('nts-') else 'fit_gh')
+                with patch('return_distributions.multivariate.'+target, return_value={}) as fitter:
                     fit_joint(x, alias)
-                    self.assertEqual(fitter.call_args.args[1], canonical)
+                    if canonical == 'generalized-t':
+                        fitter.assert_called_once()
+                    else:
+                        self.assertEqual(fitter.call_args.args[1], canonical)
         row = fit_one(x[:,0], 'variance-gamma', max_iterations=1)
         self.assertEqual(row['name'], 'variance-gamma-skewed')
 
@@ -50,7 +63,7 @@ class TestModelAliases(unittest.TestCase):
             with patch('return_distributions.joint_cli.read_returns', return_value=frame), patch('return_distributions.joint_cli.fit_joint', side_effect=ValueError('test stub')) as fitter, contextlib.redirect_stdout(io.StringIO()):
                 status = main(['unused.csv','--models',*names,'--output',str(output)])
             self.assertEqual(status,1)
-            self.assertEqual(fitter.call_count,4)
+            self.assertEqual(fitter.call_count,len(joint_aliases))
             self.assertEqual([r['model'] for r in json.loads(output.read_text())],list(joint_aliases.values()))
 
 
