@@ -1,0 +1,700 @@
+c:\python\codex\distributions\ReturnDistributions>joint_garch.bat
+
+c:\python\codex\distributions\ReturnDistributions>python asset_joint_distributions.py spy_tlt_vxx.csv --symbols SPY TLT    --models normal student-t ged ged-skewed fs-skew-normal azzalini-skew-t    noncentral-t generalized-t generalized-t-skewed gh-skew-t nig-skewed    --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4    --risk-levels .95 .975 .99 .999 --no-save    --standardize-vol none ewma garch nagarch --vol-lambda .94  
+Command: c:\Programs\Python313\python.exe -m return_distributions.joint_cli spy_tlt_vxx.csv --symbols SPY TLT --models normal student-t ged ged-skewed fs-skew-normal azzalini-skew-t noncentral-t generalized-t generalized-t-skewed gh-skew-t nig-skewed --asset-orders all --best-asset-order --weights SPY=0.6 TLT=0.4 --risk-levels .95 .975 .99 .999 --no-save --standardize-vol none ewma garch nagarch --vol-lambda .94
+Return scale: 1; raw parameters and likelihoods use scaled return units.
+Asset orders: 2 permutations per order-dependent model/window; order-invariant families fit once per window/location choice.
+Selecting the best ordering adds model-selection uncertainty not counted by ordinary AIC/BIC.
+Lagged zero-mean EWMA: lambda=0.94; half-life=11.202 observations; warmup=63; SD floor=1e-08.
+Warmup excluded; missing returns reset each asset filter. Decay is per input observation, not calendar day.
+EWMA fit parameters describe standardized returns; raw fit parameters use scaled returns. All likelihood/AIC/BIC scores use scaled return units.
+Compare raw/normalized scores only on identical dates. Selecting decay or warmup adds uncounted selection uncertainty.
+Location options use each fit's input units; next-period EWMA risk uses its corresponding lambda's SDs.
+GARCH/NAGARCH: zero-mean Gaussian QML fitted per block; lagged variances. In-sample, not a forecasting backtest.
+AIC/BIC for estimated volatility filters are descriptive two-stage criteria; volatility parameters are counted.
+Weights used without normalization: SPY=0.6, TLT=0.4
+Net exposure: 1; gross exposure: 1. No cash return or financing costs added.
+Same complete-case observations for every joint model; no pairwise deletion.
+All raw/volatility-filter variants use identical dates, excluding warmup and all filter-ineligible observations; raw fits run once per window.
+
+Partition: 1; block: 1/1
+
+All periods: 5770 common returns; 2002-10-29 to 2025-10-03
+Volatility normalization: none; scaled return parameter units; unconditional risk
+Fitting joint normal (2 assets)...
+Location: SPY=0.000492015, TLT=0.000184838
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.307
+TLT -0.307  1.000
+Fitting joint student-t (2 assets)...
+Location: SPY=0.000906756, TLT=0.000257494
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.271
+TLT -0.271  1.000
+Fitting joint ged (2 assets)...
+Location: SPY=0.000916523, TLT=0.000364877
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.275
+TLT -0.275  1.000
+Fitting joint ged-skewed [order: SPY TLT] (2 assets)...
+Fitting joint ged-skewed [order: TLT SPY] (2 assets)...
+Fitting joint fs-skew-normal [order: SPY TLT] (2 assets)...
+Fitting joint fs-skew-normal [order: TLT SPY] (2 assets)...
+Fitting joint azzalini-skew-t (2 assets)...
+Location: SPY=0.00266779, TLT=0.00105282
+Skewness alpha: SPY=-0.3571, TLT=-0.231262
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.267
+TLT -0.267  1.000
+Fitting joint noncentral-t (2 assets)...
+Location: SPY=0.0028049, TLT=0.00106971
+Noncentrality delta (return units): SPY=-0.00179539, TLT=-0.00073525
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.266
+TLT -0.266  1.000
+Fitting joint generalized-t (2 assets)...
+Location: SPY=0.000909964, TLT=0.000282379
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.272
+TLT -0.272  1.000
+Fitting joint generalized-t-skewed [order: SPY TLT] (2 assets)...
+Fitting joint generalized-t-skewed [order: TLT SPY] (2 assets)...
+Fitting joint gh-skew-t (2 assets)...
+Location: SPY=0.00151959, TLT=0.000391317
+
+Fitted scatter correlation (Pearson correlation undefined):
+       SPY    TLT
+SPY  1.000 -0.273
+TLT -0.273  1.000
+Fitting joint nig (2 assets)...
+Location: SPY=0.00157904, TLT=0.000533937
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.269
+TLT -0.269  1.000
+
+Best asset order by accepted log likelihood (per family/window):
+               model best_order successful attempted   loglik runner_up_gap
+          ged-skewed    SPY TLT          2         2 37855.27        8.8193
+      fs-skew-normal    SPY TLT          2         2 36650.48        9.0937
+generalized-t-skewed    SPY TLT          2         2 37930.67        8.1958
+Exact ties retain the first attempted order. Order-selection uncertainty is not counted by ordinary AIC/BIC.
+
+Selected fit: ged-skewed [order: SPY TLT] [vol: none]
+Location: SPY=0.00141515, TLT=0.00118432
+Cholesky-coordinate log-skewness: SPY=-0.0564108, TLT=-0.101313
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.276
+TLT -0.276  1.000
+
+Selected fit: fs-skew-normal [order: SPY TLT] [vol: none]
+Location: SPY=0.00106307, TLT=0.000775133
+Cholesky-coordinate log-skewness: SPY=-0.037582, TLT=-0.0565285
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.310
+TLT -0.310  1.000
+
+Selected fit: generalized-t-skewed [order: SPY TLT] [vol: none]
+Location: SPY=0.00151061, TLT=0.00107559
+Cholesky-coordinate log-skewness: SPY=-0.0630382, TLT=-0.0971832
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.271
+TLT -0.271  1.000
+
+Portfolio VaR and expected shortfall: 2002-10-29 to 2025-10-03; 5770 common returns
+Positive-loss percentages per input return period (one day for daily data).
+               model     asset_order vol_standardization status VAR_95% ES_95% VAR_97.5% ES_97.5% VAR_99% ES_99% VAR_99.9% ES_99.9%
+              normal order-invariant                none     ok   1.10%  1.39%     1.32%    1.58%   1.57%  1.80%     2.10%    2.29%
+           student-t order-invariant                none     ok   0.92%  1.47%     1.24%    1.88%   1.73%  2.53%     3.59%    5.08%
+                 ged order-invariant                none     ok   0.97%  1.42%     1.28%    1.73%   1.69%  2.14%     2.74%    3.20%
+          ged-skewed         SPY TLT                none     ok   1.04%  1.53%     1.38%    1.87%   1.83%  2.32%     2.99%    3.51%
+      fs-skew-normal         SPY TLT                none     ok   1.11%  1.40%     1.33%    1.60%   1.58%  1.83%     2.14%    2.32%
+     azzalini-skew-t order-invariant                none     ok   1.00%  1.63%     1.36%    2.10%   1.93%  2.86%     4.08%    5.82%
+        noncentral-t order-invariant                none     ok   1.00%  1.63%     1.37%    2.11%   1.93%  2.87%     4.10%    5.84%
+       generalized-t order-invariant                none     ok   0.93%  1.45%     1.24%    1.83%   1.72%  2.42%     3.34%    4.49%
+generalized-t-skewed         SPY TLT                none     ok   0.99%  1.57%     1.34%    1.99%   1.86%  2.64%     3.62%    5.11%
+           gh-skew-t order-invariant                none     ok   0.98%  1.68%     1.35%    2.21%   1.94%  3.14%     4.55%    7.71%
+                 nig order-invariant                none     ok   1.03%  1.59%     1.40%    1.98%   1.91%  2.53%     3.35%    4.03%
+           empirical                                none     ok   1.02%  1.61%     1.37%    2.03%   1.86%  2.73%     3.83%    4.90%
+ged-skewed [order: SPY TLT] [vol: none]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0065%; ES 0.0090%.
+  97.5% Monte Carlo SE: VaR 0.0101%; ES 0.0137%.
+  99% Monte Carlo SE: VaR 0.0157%; ES 0.0237%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+fs-skew-normal [order: SPY TLT] [vol: none]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0053%; ES 0.0048%.
+  97.5% Monte Carlo SE: VaR 0.0057%; ES 0.0050%.
+  99% Monte Carlo SE: VaR 0.0060%; ES 0.0061%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+generalized-t-skewed [order: SPY TLT] [vol: none]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0076%; ES 0.0179%.
+  97.5% Monte Carlo SE: VaR 0.0114%; ES 0.0290%.
+  99% Monte Carlo SE: VaR 0.0235%; ES 0.0578%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+Empirical tail mass: 95%: 288.50 observations, 97.5%: 144.25 observations, 99%: 57.70 observations, 99.9%: 5.77 observations.
+Empirical VaR uses linear quantile interpolation; ES uses a fractional-weight tail mean.
+Unconditional historical risk, not a forecast conditioned on current volatility; parameter uncertainty is not included.
+
+Partition: 1; block: 1/1
+Block-end next-period EWMA SDs (scaled return units): SPY=0.00478663, TLT=0.00577504
+
+All periods: 5770 common returns; 2002-10-29 to 2025-10-03
+Volatility normalization: ewma; standardized parameter units; conditional risk
+Fitting joint normal (2 assets)...
+Location: SPY=0.0533037, TLT=0.0274362
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.256
+TLT -0.256  1.000
+Fitting joint student-t (2 assets)...
+Location: SPY=0.0981512, TLT=0.0296134
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.262
+TLT -0.262  1.000
+Fitting joint ged (2 assets)...
+Location: SPY=0.094747, TLT=0.0370691
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.260
+TLT -0.260  1.000
+Fitting joint ged-skewed [order: SPY TLT] (2 assets)...
+Fitting joint ged-skewed [order: TLT SPY] (2 assets)...
+Fitting joint fs-skew-normal [order: SPY TLT] (2 assets)...
+Fitting joint fs-skew-normal [order: TLT SPY] (2 assets)...
+Fitting joint azzalini-skew-t (2 assets)...
+Location: SPY=0.602746, TLT=-0.0171151
+Skewness alpha: SPY=-0.81811, TLT=-0.126757
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.261
+TLT -0.261  1.000
+Fitting joint noncentral-t (2 assets)...
+Location: SPY=0.749416, TLT=0.0920949
+Noncentrality delta (standardized units): SPY=-0.616945, TLT=-0.0589293
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.257
+TLT -0.257  1.000
+Fitting joint generalized-t (2 assets)...
+Location: SPY=0.0980504, TLT=0.0309109
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.262
+TLT -0.262  1.000
+Fitting joint generalized-t-skewed [order: SPY TLT] (2 assets)...
+Fitting joint generalized-t-skewed [order: TLT SPY] (2 assets)...
+Fitting joint gh-skew-t (2 assets)...
+Location: SPY=0.405992, TLT=0.0425487
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.254
+TLT -0.254  1.000
+Fitting joint nig (2 assets)...
+Location: SPY=0.387855, TLT=0.0607196
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.257
+TLT -0.257  1.000
+
+Best asset order by accepted log likelihood (per family/window):
+               model best_order successful attempted   loglik runner_up_gap
+          ged-skewed    SPY TLT          2         2 38789.58        13.829
+      fs-skew-normal    SPY TLT          2         2 38538.57        20.125
+generalized-t-skewed    SPY TLT          2         2 38809.44        13.594
+Exact ties retain the first attempted order. Order-selection uncertainty is not counted by ordinary AIC/BIC.
+
+Selected fit: ged-skewed [order: SPY TLT] [vol: ewma lambda=0.94]
+Location: SPY=0.247273, TLT=0.133376
+Cholesky-coordinate log-skewness: SPY=-0.125094, TLT=-0.105163
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.263
+TLT -0.263  1.000
+
+Selected fit: fs-skew-normal [order: SPY TLT] [vol: ewma lambda=0.94]
+Location: SPY=0.318845, TLT=0.0984338
+Cholesky-coordinate log-skewness: SPY=-0.173221, TLT=-0.0906804
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.262
+TLT -0.262  1.000
+
+Selected fit: generalized-t-skewed [order: SPY TLT] [vol: ewma lambda=0.94]
+Location: SPY=0.249833, TLT=0.127041
+Cholesky-coordinate log-skewness: SPY=-0.121367, TLT=-0.103134
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.265
+TLT -0.265  1.000
+
+Portfolio VaR and expected shortfall: 2002-10-29 to 2025-10-03; 5770 common returns
+Positive-loss percentages per input return period (one day for daily data).
+               model     asset_order vol_standardization  vol_lambda status VAR_95% ES_95% VAR_97.5% ES_97.5% VAR_99% ES_99% VAR_99.9% ES_99.9%
+              normal order-invariant                ewma        0.94     ok   0.53%  0.67%     0.63%    0.76%   0.75%  0.87%     1.01%    1.10%
+           student-t order-invariant                ewma        0.94     ok   0.49%  0.69%     0.63%    0.83%   0.80%  1.03%     1.32%    1.60%
+                 ged order-invariant                ewma        0.94     ok   0.51%  0.69%     0.64%    0.81%   0.80%  0.97%     1.19%    1.34%
+          ged-skewed         SPY TLT                ewma        0.94     ok   0.54%  0.74%     0.68%    0.87%   0.86%  1.04%     1.26%    1.47%
+      fs-skew-normal         SPY TLT                ewma        0.94     ok   0.54%  0.69%     0.65%    0.79%   0.79%  0.91%     1.06%    1.15%
+     azzalini-skew-t order-invariant                ewma        0.94     ok   0.53%  0.75%     0.67%    0.91%   0.88%  1.13%     1.45%    1.77%
+        noncentral-t order-invariant                ewma        0.94     ok   0.53%  0.76%     0.69%    0.93%   0.90%  1.16%     1.50%    1.83%
+       generalized-t order-invariant                ewma        0.94     ok   0.49%  0.69%     0.63%    0.83%   0.80%  1.02%     1.29%    1.55%
+generalized-t-skewed         SPY TLT                ewma        0.94     ok   0.53%  0.74%     0.68%    0.90%   0.87%  1.10%     1.42%    1.69%
+           gh-skew-t order-invariant                ewma        0.94     ok   0.53%  0.78%     0.69%    0.95%   0.91%  1.21%     1.59%    2.04%
+                 nig order-invariant                ewma        0.94     ok   0.54%  0.76%     0.70%    0.92%   0.90%  1.12%     1.42%    1.65%
+           empirical                                ewma        0.94     ok   0.54%  0.77%     0.70%    0.93%   0.89%  1.16%     1.46%    2.00%
+ged-skewed [order: SPY TLT] [vol: ewma lambda=0.94]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0023%; ES 0.0036%.
+  97.5% Monte Carlo SE: VaR 0.0035%; ES 0.0050%.
+  99% Monte Carlo SE: VaR 0.0062%; ES 0.0088%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+fs-skew-normal [order: SPY TLT] [vol: ewma lambda=0.94]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0023%; ES 0.0027%.
+  97.5% Monte Carlo SE: VaR 0.0032%; ES 0.0034%.
+  99% Monte Carlo SE: VaR 0.0035%; ES 0.0048%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+generalized-t-skewed [order: SPY TLT] [vol: ewma lambda=0.94]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0025%; ES 0.0037%.
+  97.5% Monte Carlo SE: VaR 0.0033%; ES 0.0059%.
+  99% Monte Carlo SE: VaR 0.0080%; ES 0.0103%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+Empirical tail mass: 95%: 288.50 observations, 97.5%: 144.25 observations, 99%: 57.70 observations, 99.9%: 5.77 observations.
+Empirical VaR uses linear quantile interpolation; ES uses a fractional-weight tail mean.
+Next-period conditional risk; empirical row is filtered historical simulation at next-period volatility scales. Parameter/filter uncertainty is not included.
+
+Partition: 1; block: 1/1
+Fitting GARCH volatility: SPY (5770 observations)...
+Fitting GARCH volatility: TLT (5770 observations)...
+GARCH zero-mean Gaussian QML (in-sample; two-stage criteria):
+          omega     alpha     beta theta persistence converged near_boundary fit_sec
+SPY 2.55721e-06  0.121572 0.855697     0     0.97727      True         False   0.084
+TLT 6.22951e-07 0.0521764 0.940268     0    0.992444      True         False   0.102
+Block-end next-period SDs: SPY=0.00540867, TLT=0.00629379
+
+All periods: 5770 common returns; 2002-10-29 to 2025-10-03
+Volatility normalization: garch; standardized parameter units; conditional risk
+Fitting joint normal (2 assets)...
+Location: SPY=0.0524181, TLT=0.0254388
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.264
+TLT -0.264  1.000
+Fitting joint student-t (2 assets)...
+Location: SPY=0.0923254, TLT=0.0277796
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.267
+TLT -0.267  1.000
+Fitting joint ged (2 assets)...
+Location: SPY=0.0907018, TLT=0.0341293
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.266
+TLT -0.266  1.000
+Fitting joint ged-skewed [order: SPY TLT] (2 assets)...
+Fitting joint ged-skewed [order: TLT SPY] (2 assets)...
+Fitting joint fs-skew-normal [order: SPY TLT] (2 assets)...
+Fitting joint fs-skew-normal [order: TLT SPY] (2 assets)...
+Fitting joint azzalini-skew-t (2 assets)...
+Location: SPY=0.609702, TLT=-0.0285619
+Skewness alpha: SPY=-0.872745, TLT=-0.125781
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.266
+TLT -0.266  1.000
+Fitting joint noncentral-t (2 assets)...
+Location: SPY=0.777991, TLT=0.102577
+Noncentrality delta (standardized units): SPY=-0.65041, TLT=-0.0705113
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.262
+TLT -0.262  1.000
+Fitting joint generalized-t (2 assets)...
+Location: SPY=0.0925313, TLT=0.0295913
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.267
+TLT -0.267  1.000
+Fitting joint generalized-t-skewed [order: SPY TLT] (2 assets)...
+Fitting joint generalized-t-skewed [order: TLT SPY] (2 assets)...
+Fitting joint gh-skew-t (2 assets)...
+Location: SPY=0.414999, TLT=0.0459345
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.259
+TLT -0.259  1.000
+Fitting joint nig (2 assets)...
+Location: SPY=0.397746, TLT=0.0636029
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.262
+TLT -0.262  1.000
+
+Best asset order by accepted log likelihood (per family/window):
+               model best_order successful attempted   loglik runner_up_gap
+          ged-skewed    SPY TLT          2         2 38874.34        14.380
+      fs-skew-normal    SPY TLT          2         2 38670.09        19.601
+generalized-t-skewed    SPY TLT          2         2 38885.42        14.226
+Exact ties retain the first attempted order. Order-selection uncertainty is not counted by ordinary AIC/BIC.
+
+Selected fit: ged-skewed [order: SPY TLT] [vol: garch]
+Location: SPY=0.244772, TLT=0.12826
+Cholesky-coordinate log-skewness: SPY=-0.128707, TLT=-0.106977
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.269
+TLT -0.269  1.000
+
+Selected fit: fs-skew-normal [order: SPY TLT] [vol: garch]
+Location: SPY=0.294168, TLT=0.0970991
+Cholesky-coordinate log-skewness: SPY=-0.163614, TLT=-0.0919629
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.269
+TLT -0.269  1.000
+
+Selected fit: generalized-t-skewed [order: SPY TLT] [vol: garch]
+Location: SPY=0.248484, TLT=0.124546
+Cholesky-coordinate log-skewness: SPY=-0.127806, TLT=-0.106574
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.270
+TLT -0.270  1.000
+
+Portfolio VaR and expected shortfall: 2002-10-29 to 2025-10-03; 5770 common returns
+Positive-loss percentages per input return period (one day for daily data).
+               model     asset_order vol_standardization vol_lambda status VAR_95% ES_95% VAR_97.5% ES_97.5% VAR_99% ES_99% VAR_99.9% ES_99.9%
+              normal order-invariant               garch       None     ok   0.56%  0.71%     0.67%    0.80%   0.80%  0.92%     1.07%    1.17%
+           student-t order-invariant               garch       None     ok   0.53%  0.73%     0.67%    0.88%   0.85%  1.08%     1.37%    1.65%
+                 ged order-invariant               garch       None     ok   0.54%  0.73%     0.68%    0.86%   0.85%  1.02%     1.25%    1.41%
+          ged-skewed         SPY TLT               garch       None     ok   0.57%  0.78%     0.72%    0.92%   0.91%  1.09%     1.32%    1.51%
+      fs-skew-normal         SPY TLT               garch       None     ok   0.57%  0.73%     0.69%    0.84%   0.83%  0.96%     1.13%    1.22%
+     azzalini-skew-t order-invariant               garch       None     ok   0.56%  0.80%     0.72%    0.96%   0.93%  1.18%     1.52%    1.84%
+        noncentral-t order-invariant               garch       None     ok   0.57%  0.81%     0.73%    0.98%   0.95%  1.22%     1.57%    1.90%
+       generalized-t order-invariant               garch       None     ok   0.53%  0.73%     0.67%    0.87%   0.85%  1.06%     1.33%    1.57%
+generalized-t-skewed         SPY TLT               garch       None     ok   0.57%  0.79%     0.72%    0.94%   0.92%  1.14%     1.41%    1.68%
+           gh-skew-t order-invariant               garch       None     ok   0.57%  0.83%     0.74%    1.01%   0.97%  1.26%     1.66%    2.09%
+                 nig order-invariant               garch       None     ok   0.58%  0.81%     0.74%    0.97%   0.95%  1.19%     1.49%    1.73%
+           empirical                               garch       None     ok   0.58%  0.81%     0.73%    0.97%   0.94%  1.19%     1.56%    1.89%
+ged-skewed [order: SPY TLT] [vol: garch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0033%; ES 0.0045%.
+  97.5% Monte Carlo SE: VaR 0.0049%; ES 0.0062%.
+  99% Monte Carlo SE: VaR 0.0067%; ES 0.0088%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+fs-skew-normal [order: SPY TLT] [vol: garch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0024%; ES 0.0028%.
+  97.5% Monte Carlo SE: VaR 0.0032%; ES 0.0035%.
+  99% Monte Carlo SE: VaR 0.0036%; ES 0.0050%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+generalized-t-skewed [order: SPY TLT] [vol: garch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0029%; ES 0.0045%.
+  97.5% Monte Carlo SE: VaR 0.0039%; ES 0.0067%.
+  99% Monte Carlo SE: VaR 0.0072%; ES 0.0107%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+Empirical tail mass: 95%: 288.50 observations, 97.5%: 144.25 observations, 99%: 57.70 observations, 99.9%: 5.77 observations.
+Empirical VaR uses linear quantile interpolation; ES uses a fractional-weight tail mean.
+Next-period conditional risk; empirical row is filtered historical simulation at next-period volatility scales. Parameter/filter uncertainty is not included.
+
+Partition: 1; block: 1/1
+Fitting NAGARCH volatility: SPY (5770 observations)...
+Fitting NAGARCH volatility: TLT (5770 observations)...
+NAGARCH zero-mean Gaussian QML (in-sample; two-stage criteria):
+          omega     alpha     beta      theta persistence converged near_boundary fit_sec
+SPY 2.98224e-06  0.103103 0.751405    1.16715    0.994958      True         False  18.165
+TLT 6.00211e-07 0.0517514 0.940595 -0.0712457    0.992609      True         False  14.602
+Block-end next-period SDs: SPY=0.00485218, TLT=0.00633795
+
+All periods: 5770 common returns; 2002-10-29 to 2025-10-03
+Volatility normalization: nagarch; standardized parameter units; conditional risk
+Fitting joint normal (2 assets)...
+Location: SPY=0.0472578, TLT=0.0256025
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.254
+TLT -0.254  1.000
+Fitting joint student-t (2 assets)...
+Location: SPY=0.0899484, TLT=0.0257986
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.261
+TLT -0.261  1.000
+Fitting joint ged (2 assets)...
+Location: SPY=0.0892891, TLT=0.0307908
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.260
+TLT -0.260  1.000
+Fitting joint ged-skewed [order: SPY TLT] (2 assets)...
+Fitting joint ged-skewed [order: TLT SPY] (2 assets)...
+Fitting joint fs-skew-normal [order: SPY TLT] (2 assets)...
+Fitting joint fs-skew-normal [order: TLT SPY] (2 assets)...
+Fitting joint azzalini-skew-t (2 assets)...
+Location: SPY=0.711072, TLT=-0.139132
+Skewness alpha: SPY=-1.05257, TLT=-0.00254462
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.261
+TLT -0.261  1.000
+Fitting joint noncentral-t (2 assets)...
+Location: SPY=0.928894, TLT=0.0305611
+Noncentrality delta (standardized units): SPY=-0.79593, TLT=-0.00517935
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.255
+TLT -0.255  1.000
+Fitting joint generalized-t (2 assets)...
+Location: SPY=0.0901573, TLT=0.0261972
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.261
+TLT -0.261  1.000
+Fitting joint generalized-t-skewed [order: SPY TLT] (2 assets)...
+Fitting joint generalized-t-skewed [order: TLT SPY] (2 assets)...
+Fitting joint gh-skew-t (2 assets)...
+Location: SPY=0.482795, TLT=0.0188874
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.253
+TLT -0.253  1.000
+Fitting joint nig (2 assets)...
+Location: SPY=0.472089, TLT=0.029912
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.255
+TLT -0.255  1.000
+
+Best asset order by accepted log likelihood (per family/window):
+               model best_order successful attempted   loglik runner_up_gap
+          ged-skewed    SPY TLT          2         2 39054.87        18.559
+      fs-skew-normal    SPY TLT          2         2 38876.52        25.596
+generalized-t-skewed    SPY TLT          2         2 39070.64        18.501
+Exact ties retain the first attempted order. Order-selection uncertainty is not counted by ordinary AIC/BIC.
+
+Selected fit: ged-skewed [order: SPY TLT] [vol: nagarch]
+Location: SPY=0.30003, TLT=0.10525
+Cholesky-coordinate log-skewness: SPY=-0.169297, TLT=-0.101732
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.263
+TLT -0.263  1.000
+
+Selected fit: fs-skew-normal [order: SPY TLT] [vol: nagarch]
+Location: SPY=0.344516, TLT=0.0840166
+Cholesky-coordinate log-skewness: SPY=-0.200164, TLT=-0.0907529
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.259
+TLT -0.259  1.000
+
+Selected fit: generalized-t-skewed [order: SPY TLT] [vol: nagarch]
+Location: SPY=0.305891, TLT=0.102969
+Cholesky-coordinate log-skewness: SPY=-0.169776, TLT=-0.102907
+
+Fitted return correlation:
+       SPY    TLT
+SPY  1.000 -0.264
+TLT -0.264  1.000
+
+Portfolio VaR and expected shortfall: 2002-10-29 to 2025-10-03; 5770 common returns
+Positive-loss percentages per input return period (one day for daily data).
+               model     asset_order vol_standardization vol_lambda status VAR_95% ES_95% VAR_97.5% ES_97.5% VAR_99% ES_99% VAR_99.9% ES_99.9%
+              normal order-invariant             nagarch       None     ok   0.53%  0.67%     0.63%    0.76%   0.76%  0.87%     1.01%    1.10%
+           student-t order-invariant             nagarch       None     ok   0.50%  0.69%     0.63%    0.83%   0.80%  1.01%     1.28%    1.53%
+                 ged order-invariant             nagarch       None     ok   0.51%  0.69%     0.64%    0.81%   0.80%  0.96%     1.17%    1.31%
+          ged-skewed         SPY TLT             nagarch       None     ok   0.55%  0.74%     0.69%    0.87%   0.85%  1.03%     1.23%    1.41%
+      fs-skew-normal         SPY TLT             nagarch       None     ok   0.54%  0.69%     0.66%    0.79%   0.79%  0.91%     1.07%    1.16%
+     azzalini-skew-t order-invariant             nagarch       None     ok   0.53%  0.74%     0.67%    0.89%   0.86%  1.09%     1.39%    1.66%
+        noncentral-t order-invariant             nagarch       None     ok   0.54%  0.77%     0.69%    0.92%   0.90%  1.14%     1.46%    1.76%
+       generalized-t order-invariant             nagarch       None     ok   0.50%  0.69%     0.63%    0.82%   0.80%  1.00%     1.27%    1.51%
+generalized-t-skewed         SPY TLT             nagarch       None     ok   0.54%  0.75%     0.68%    0.89%   0.87%  1.09%     1.36%    1.60%
+           gh-skew-t order-invariant             nagarch       None     ok   0.54%  0.78%     0.70%    0.94%   0.91%  1.18%     1.53%    1.91%
+                 nig order-invariant             nagarch       None     ok   0.55%  0.77%     0.70%    0.92%   0.90%  1.11%     1.39%    1.61%
+           empirical                             nagarch       None     ok   0.55%  0.77%     0.70%    0.92%   0.89%  1.12%     1.46%    1.68%
+ged-skewed [order: SPY TLT] [vol: nagarch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0028%; ES 0.0038%.
+  97.5% Monte Carlo SE: VaR 0.0035%; ES 0.0061%.
+  99% Monte Carlo SE: VaR 0.0079%; ES 0.0091%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+fs-skew-normal [order: SPY TLT] [vol: nagarch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0023%; ES 0.0029%.
+  97.5% Monte Carlo SE: VaR 0.0030%; ES 0.0037%.
+  99% Monte Carlo SE: VaR 0.0035%; ES 0.0053%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+generalized-t-skewed [order: SPY TLT] [vol: nagarch]: simulated risk estimates; 100000 draws, seed 12345.
+  95% Monte Carlo SE: VaR 0.0033%; ES 0.0040%.
+  97.5% Monte Carlo SE: VaR 0.0043%; ES 0.0054%.
+  99% Monte Carlo SE: VaR 0.0065%; ES 0.0079%.
+  99.9% Monte Carlo SE: VaR n/a; ES n/a.
+  Monte Carlo SE excludes parameter uncertainty; n/a means insufficient tail draws or undefined variance.
+Empirical tail mass: 95%: 288.50 observations, 97.5%: 144.25 observations, 99%: 57.70 observations, 99.9%: 5.77 observations.
+Empirical VaR uses linear quantile interpolation; ES uses a fractional-weight tail mean.
+Next-period conditional risk; empirical row is filtered historical simulation at next-period volatility scales. Parameter/filter uncertainty is not included.
+
+Joint fit comparison:
+window: all available history; observations: 5770; dimensions: 2; first_date: 2002-10-29; last_date: 2025-10-03; status: ok; return_scale: 1; subperiods: 1; block: 1; likelihood_units: scaled returns
+               model vol_standardization vol_lambda     asset_order parameters   loglik       aic       bic aic_rank bic_rank fit_sec     df      q   power   lambda     psi vol_warmup   vol_floor      parameter_units vol_parameter_count                                        criteria_basis tail_index
+              normal                none        n/a order-invariant          5 36637.87 -73265.75 -73232.45       44       44   0.013    n/a    n/a     n/a      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+           student-t                none        n/a order-invariant          6 37903.11 -75794.21 -75754.25       39       38   0.361 3.5367    n/a     n/a      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+                 ged                none        n/a order-invariant          6 37829.22 -75646.44 -75606.48       42       42   1.177    n/a    n/a 0.87137      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+          ged-skewed                none        n/a         SPY TLT          8 37855.27 -75694.53 -75641.25       41       41   2.985    n/a    n/a 0.86894      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+      fs-skew-normal                none        n/a         SPY TLT          7 36650.48 -73286.97 -73240.34       43       43   0.711    n/a    n/a 2.00000      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+     azzalini-skew-t                none        n/a order-invariant          8 37921.37 -75826.75 -75773.47       36       36  11.338 3.5427    n/a     n/a      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+        noncentral-t                none        n/a order-invariant          8 37921.84 -75827.68 -75774.40       35       35   7.702 3.5458    n/a     n/a      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+       generalized-t                none        n/a order-invariant          7 37907.42 -75800.85 -75754.22       38       39   1.252    n/a 2.4942 1.70030      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a     4.2409
+generalized-t-skewed                none        n/a         SPY TLT          9 37930.67 -75843.34 -75783.40       34       34  10.109    n/a 2.5745 1.67922      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a     4.3232
+           gh-skew-t                none        n/a order-invariant          8 37915.90 -75815.79 -75762.51       37       37  32.414 3.5618    n/a     n/a      n/a     n/a        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+                 nig                none        n/a order-invariant          8 37899.99 -75783.97 -75730.69       40       40   4.537    n/a    n/a     n/a -0.50000 0.53849        n/a         n/a       scaled returns                 n/a                                                   n/a        n/a
+              normal                ewma    0.94000 order-invariant          5 38460.05 -76910.10 -76876.79       33       33   0.002    n/a    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+           student-t                ewma    0.94000 order-invariant          6 38768.06 -77524.12 -77484.15       27       26   0.466 6.7294    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+                 ged                ewma    0.94000 order-invariant          6 38741.93 -77471.86 -77431.89       29       29   1.601    n/a    n/a 1.24223      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+          ged-skewed                ewma    0.94000         SPY TLT          8 38789.58 -77563.17 -77509.88       25       25   3.511    n/a    n/a 1.26484      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+      fs-skew-normal                ewma    0.94000         SPY TLT          7 38538.57 -77063.15 -77016.52       32       32   0.644    n/a    n/a 2.00000      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+     azzalini-skew-t                ewma    0.94000 order-invariant          8 38806.41 -77596.82 -77543.53       24       23  21.541 7.0673    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+        noncentral-t                ewma    0.94000 order-invariant          8 38810.11 -77604.21 -77550.93       21       20  19.491 7.0912    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+       generalized-t                ewma    0.94000 order-invariant          7 38769.00 -77524.01 -77477.39       28       27   1.801    n/a 4.2671 1.84638      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a     7.8787
+generalized-t-skewed                ewma    0.94000         SPY TLT          9 38809.44 -77600.88 -77540.93       23       24  11.438    n/a 4.9887 1.78874      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a     8.9235
+           gh-skew-t                ewma    0.94000 order-invariant          8 38813.29 -77610.57 -77557.29       20       19  43.721 7.3118    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+                 nig                ewma    0.94000 order-invariant          8 38809.85 -77603.70 -77550.42       22       21   5.396    n/a    n/a     n/a -0.50000 5.02799     63.000 1.0000e-008 standardized returns                 n/a                                                   n/a        n/a
+              normal               garch        n/a order-invariant         11 38601.29 -77180.57 -77107.31       31       31   0.001    n/a    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+           student-t               garch        n/a order-invariant         12 38838.90 -77653.80 -77573.87       18       17   0.398 7.3065    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+                 ged               garch        n/a order-invariant         12 38824.73 -77625.45 -77545.53       19       22   0.926    n/a    n/a 1.28912      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+          ged-skewed               garch        n/a         SPY TLT         14 38874.34 -77720.69 -77627.44       16       15   3.087    n/a    n/a 1.30842      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+      fs-skew-normal               garch        n/a         SPY TLT         13 38670.09 -77314.17 -77227.59       30       30   0.624    n/a    n/a 2.00000      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+     azzalini-skew-t               garch        n/a order-invariant         14 38879.26 -77730.53 -77637.28       14       14  19.720 7.6395    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+        noncentral-t               garch        n/a order-invariant         14 38883.36 -77738.72 -77645.48       13       12  18.716 7.6471    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+       generalized-t               garch        n/a order-invariant         13 38840.91 -77655.81 -77569.23       17       18   2.079    n/a 5.4293 1.77453      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included     9.6344
+generalized-t-skewed               garch        n/a         SPY TLT         15 38885.42 -77740.85 -77640.94       12       13  13.365    n/a 6.6185 1.71364      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included    11.3417
+           gh-skew-t               garch        n/a order-invariant         14 38884.49 -77740.97 -77647.73       11       11  32.000 7.9045    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+                 nig               garch        n/a order-invariant         14 38886.06 -77744.13 -77650.88       10       10   4.151    n/a    n/a     n/a -0.50000 6.21562     63.000 1.0000e-008 standardized returns              6.0000 descriptive two-stage; volatility parameters included        n/a
+              normal             nagarch        n/a order-invariant         13 38788.40 -77550.80 -77464.21       26       28   0.002    n/a    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+           student-t             nagarch        n/a order-invariant         14 39011.79 -77995.58 -77902.34        7        7   0.259 7.6832    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+                 ged             nagarch        n/a order-invariant         14 38989.20 -77950.39 -77857.14        9        9   0.702    n/a    n/a 1.32157      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+          ged-skewed             nagarch        n/a         SPY TLT         16 39054.87 -78077.74 -77971.18        6        6   2.669    n/a    n/a 1.34820      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+      fs-skew-normal             nagarch        n/a         SPY TLT         15 38876.52 -77723.04 -77623.13       15       16   0.555    n/a    n/a 2.00000      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+     azzalini-skew-t             nagarch        n/a order-invariant         16 39065.15 -78098.29 -77991.72        5        5  19.854 8.2480    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+        noncentral-t             nagarch        n/a order-invariant         16 39066.88 -78101.75 -77995.19        4        3  16.870 8.0683    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+       generalized-t             nagarch        n/a order-invariant         15 39011.94 -77993.88 -77893.97        8        8   2.198    n/a 4.2587 1.93558      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included     8.2431
+generalized-t-skewed             nagarch        n/a         SPY TLT         17 39070.64 -78107.27 -77994.05        1        4  11.673    n/a 5.1187 1.86718      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included     9.5576
+           gh-skew-t             nagarch        n/a order-invariant         16 39067.37 -78102.74 -77996.17        3        2  18.683 8.4361    n/a     n/a      n/a     n/a     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+                 nig             nagarch        n/a order-invariant         16 39067.64 -78103.27 -77996.71        2        1   2.946    n/a    n/a     n/a -0.50000 7.46769     63.000 1.0000e-008 standardized returns              8.0000 descriptive two-stage; volatility parameters included        n/a
+
+Aggregate multivariate fit comparison (single-component and mixture fits):
+AIC/BIC ranks within each window across all displayed families, component counts, and volatility settings. Every finite criterion is included, regardless of convergence; check status. Ties share the minimum rank.
+components: 1; window: all available history; subperiods: 1; block: 1; first_date: 2002-10-29; last_date: 2025-10-03; observations: 5770; status: ok
+               model vol_standardization vol_lambda     asset_order #param   loglik       aic       bic aic_rank bic_rank fit_sec
+              normal                none        n/a order-invariant      5 36637.87 -73265.75 -73232.45       44       44   0.013
+           student-t                none        n/a order-invariant      6 37903.11 -75794.21 -75754.25       39       38   0.361
+                 ged                none        n/a order-invariant      6 37829.22 -75646.44 -75606.48       42       42   1.177
+          ged-skewed                none        n/a         SPY TLT      8 37855.27 -75694.53 -75641.25       41       41   2.985
+      fs-skew-normal                none        n/a         SPY TLT      7 36650.48 -73286.97 -73240.34       43       43   0.711
+     azzalini-skew-t                none        n/a order-invariant      8 37921.37 -75826.75 -75773.47       36       36  11.338
+        noncentral-t                none        n/a order-invariant      8 37921.84 -75827.68 -75774.40       35       35   7.702
+       generalized-t                none        n/a order-invariant      7 37907.42 -75800.85 -75754.22       38       39   1.252
+generalized-t-skewed                none        n/a         SPY TLT      9 37930.67 -75843.34 -75783.40       34       34  10.109
+           gh-skew-t                none        n/a order-invariant      8 37915.90 -75815.79 -75762.51       37       37  32.414
+                 nig                none        n/a order-invariant      8 37899.99 -75783.97 -75730.69       40       40   4.537
+              normal                ewma    0.94000 order-invariant      5 38460.05 -76910.10 -76876.79       33       33   0.002
+           student-t                ewma    0.94000 order-invariant      6 38768.06 -77524.12 -77484.15       27       26   0.466
+                 ged                ewma    0.94000 order-invariant      6 38741.93 -77471.86 -77431.89       29       29   1.601
+          ged-skewed                ewma    0.94000         SPY TLT      8 38789.58 -77563.17 -77509.88       25       25   3.511
+      fs-skew-normal                ewma    0.94000         SPY TLT      7 38538.57 -77063.15 -77016.52       32       32   0.644
+     azzalini-skew-t                ewma    0.94000 order-invariant      8 38806.41 -77596.82 -77543.53       24       23  21.541
+        noncentral-t                ewma    0.94000 order-invariant      8 38810.11 -77604.21 -77550.93       21       20  19.491
+       generalized-t                ewma    0.94000 order-invariant      7 38769.00 -77524.01 -77477.39       28       27   1.801
+generalized-t-skewed                ewma    0.94000         SPY TLT      9 38809.44 -77600.88 -77540.93       23       24  11.438
+           gh-skew-t                ewma    0.94000 order-invariant      8 38813.29 -77610.57 -77557.29       20       19  43.721
+                 nig                ewma    0.94000 order-invariant      8 38809.85 -77603.70 -77550.42       22       21   5.396
+              normal               garch        n/a order-invariant     11 38601.29 -77180.57 -77107.31       31       31   0.001
+           student-t               garch        n/a order-invariant     12 38838.90 -77653.80 -77573.87       18       17   0.398
+                 ged               garch        n/a order-invariant     12 38824.73 -77625.45 -77545.53       19       22   0.926
+          ged-skewed               garch        n/a         SPY TLT     14 38874.34 -77720.69 -77627.44       16       15   3.087
+      fs-skew-normal               garch        n/a         SPY TLT     13 38670.09 -77314.17 -77227.59       30       30   0.624
+     azzalini-skew-t               garch        n/a order-invariant     14 38879.26 -77730.53 -77637.28       14       14  19.720
+        noncentral-t               garch        n/a order-invariant     14 38883.36 -77738.72 -77645.48       13       12  18.716
+       generalized-t               garch        n/a order-invariant     13 38840.91 -77655.81 -77569.23       17       18   2.079
+generalized-t-skewed               garch        n/a         SPY TLT     15 38885.42 -77740.85 -77640.94       12       13  13.365
+           gh-skew-t               garch        n/a order-invariant     14 38884.49 -77740.97 -77647.73       11       11  32.000
+                 nig               garch        n/a order-invariant     14 38886.06 -77744.13 -77650.88       10       10   4.151
+              normal             nagarch        n/a order-invariant     13 38788.40 -77550.80 -77464.21       26       28   0.002
+           student-t             nagarch        n/a order-invariant     14 39011.79 -77995.58 -77902.34        7        7   0.259
+                 ged             nagarch        n/a order-invariant     14 38989.20 -77950.39 -77857.14        9        9   0.702
+          ged-skewed             nagarch        n/a         SPY TLT     16 39054.87 -78077.74 -77971.18        6        6   2.669
+      fs-skew-normal             nagarch        n/a         SPY TLT     15 38876.52 -77723.04 -77623.13       15       16   0.555
+     azzalini-skew-t             nagarch        n/a order-invariant     16 39065.15 -78098.29 -77991.72        5        5  19.854
+        noncentral-t             nagarch        n/a order-invariant     16 39066.88 -78101.75 -77995.19        4        3  16.870
+       generalized-t             nagarch        n/a order-invariant     15 39011.94 -77993.88 -77893.97        8        8   2.198
+generalized-t-skewed             nagarch        n/a         SPY TLT     17 39070.64 -78107.27 -77994.05        1        4  11.673
+           gh-skew-t             nagarch        n/a order-invariant     16 39067.37 -78102.74 -77996.17        3        2  18.683
+                 nig             nagarch        n/a order-invariant     16 39067.64 -78103.27 -77996.71        2        1   2.946
+Generalized t: R**power/q ~ BetaPrime(dimension/power,q); tail index=power*q. Mean requires index>1; covariance requires index>2. General portfolio projections retain the original dimension. Bounds: power [0.25,10], q [0.1,1000]; large-q boundary may indicate GED limit.
+Skewed generalized t: two-piece Cholesky-coordinate construction; asset ordering matters. Skewness bounds [-3,3]; positive values lengthen the positive side. Location is the mode, not the mean. Portfolio risk uses Monte Carlo, not a univariate generalized-t projection.
+Skewed GED/FS normal: two-piece Cholesky coordinates; asset ordering matters. GED power bounds [0.25,10]; FS normal fixes power=2. Skewness bounds [-3,3]; positive values lengthen the positive side. All moments exist; location is the mode, not the mean. Portfolio risk uses Monte Carlo. General multivariate marginals need not be univariate skewed GED.
+Student-t scatter is not covariance; covariance is unavailable when df <= 2.
+NIG mixture: chi=1; lambda=-1/2. Skewed NIG location is not its mean.
+GH skew-t: inverse-gamma mixture; nonzero skew requires df>2 for a finite mean and df>4 for covariance. ES depends on the projected loss-tail direction. Fit bounds: 0.25<=df<=200; boundary fits excluded.
+GED is elliptical power-exponential: exp(-q^(power/2)). Marginals need not be GED.
+Data elapsed: 0.287 seconds
+Fitting/output elapsed: 468.038 seconds
+Overall elapsed: 468.325 seconds
