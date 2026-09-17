@@ -1,3 +1,7 @@
+"""Test portfolio VaR and expected shortfall across distribution families.
+Compare analytic and numerical results with references and Monte Carlo estimates.
+"""
+
 import unittest
 import numpy as np
 from scipy import stats

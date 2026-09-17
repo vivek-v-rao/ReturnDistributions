@@ -1,3 +1,7 @@
+"""Test date restrictions and balanced sample partitions.
+Cover endpoint volatility scales and consistent CLI handling of subperiods.
+"""
+
 import contextlib
 import io
 from pathlib import Path

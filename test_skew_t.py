@@ -1,3 +1,7 @@
+"""Test Fernandez-Steel and Azzalini univariate skew-t distributions.
+Cover symmetric limits, probabilities, moments, sampling, fitting, and refinement.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats

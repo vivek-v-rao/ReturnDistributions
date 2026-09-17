@@ -1,3 +1,7 @@
+"""Test additional SciPy-backed families and Crystal Ball distribution behavior.
+Cover moments, expected shortfall, aliases, fitting failures, and copula marginals.
+"""
+
 import contextlib
 import io
 import json

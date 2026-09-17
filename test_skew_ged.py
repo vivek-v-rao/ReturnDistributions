@@ -1,3 +1,7 @@
+"""Test skewed GED densities, symmetry, reflection, moments, and tail risk.
+Cover quantiles, fit serialization, iteration limits, and copula integration.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test decimal alignment and elapsed-time precision in console tables.
+Cover missing values, infinities, scientific notation, and unchanged inputs.
+"""
+
 import re
 import unittest
 
