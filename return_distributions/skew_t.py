@@ -104,6 +104,45 @@ class AzzaliniSkewT(stats.rv_continuous):
 
     def _sf(self, x, df, skew): return self._cdf(-x,df,-skew)
 
+    def _ppf(self, q, df, skew):
+        # The fast copula quantile engine is also applicable to standardized
+        # univariate margins. Keep the adaptive CDF above as an independent
+        # audit and SciPy's scalar inversion as a conservative fallback.
+        from .skew_t_copula import marginal_ppf
+        q, df, skew = np.broadcast_arrays(q, df, skew)
+        result = np.empty(q.size)
+        probabilities = q.ravel()
+        pairs, groups = np.unique(np.column_stack([df.ravel(), skew.ravel()]), axis=0, return_inverse=True)
+        for group, (nu, alpha) in enumerate(pairs):
+            indices = np.flatnonzero(groups == group)
+            u = probabilities[indices]
+            if alpha == 0:
+                result[indices] = stats.t.ppf(u, nu)
+                continue
+            fast = (u >= 1e-8) & (u <= 1-1e-8) & (.25 <= nu <= 200) & (abs(alpha) <= 12)
+            if fast.any():
+                try:
+                    values = marginal_ppf(u[fast], nu, alpha)
+                    probes = np.unique(np.linspace(0, len(values)-1, min(11, len(values))).astype(int))
+                    ordered = np.argsort(u[fast])[probes]
+                    target = u[fast][ordered]
+                    x = values[ordered]
+                    # Use the reflected survival function for upper tails.
+                    reference = self._cdf(np.where(target > .5, -x, x), nu,
+                                          np.where(target > .5, -alpha, alpha))
+                    tail = np.minimum(target, 1-target)
+                    if (not np.isfinite(values).all() or not np.isfinite(reference).all()
+                            or np.any(np.abs(reference-tail) > 2e-8*tail+2e-14)):
+                        raise ValueError('Fast skew-t quantile audit failed')
+                    result[indices[fast]] = values
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                    fast[:] = False
+            if (~fast).any():
+                result[indices[~fast]] = super()._ppf(u[~fast], nu, alpha)
+        return result.reshape(q.shape)
+
+
+
     def _rvs(self, df, skew, size=None, random_state=None):
         delta=skew/np.hypot(1,skew)
         sn=delta*np.abs(random_state.normal(size=size))+np.sqrt(1-delta**2)*random_state.normal(size=size)

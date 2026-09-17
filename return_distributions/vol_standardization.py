@@ -40,12 +40,12 @@ def ewma_standardize(frame, decay=.94, warmup=63, floor=1e-8):
     return frame/scales, scales, pd.Series(next_scale)
 
 
-def annotate_fit(fit, scales, next_scale, decay, warmup, floor):
+def annotate_fit(fit, scales, next_scale, decay, warmup, floor, model='ewma', parameters=None):
     """Keep distribution parameters in standardized units; scores in return units."""
-    fit.update(vol_standardization='ewma', vol_lambda=float(decay), vol_warmup=warmup,
+    fit.update(vol_standardization=model, vol_lambda=None if decay is None else float(decay), vol_warmup=warmup,
                vol_floor=floor, parameter_units='standardized returns',
                next_volatility=next_scale.tolist(),
-               likelihood_units='original returns; conditional on fixed EWMA filter')
+               likelihood_units='original returns; conditional volatility Jacobian included')
     adjustment = float(np.log(scales.to_numpy()).sum())
     fit['vol_log_jacobian'] = adjustment
     if fit.get('loglik') is not None and np.isfinite(fit['loglik']):
@@ -54,12 +54,25 @@ def annotate_fit(fit, scales, next_scale, decay, warmup, floor):
         for key in ('aic', 'bic', 'two_stage_aic', 'two_stage_bic'):
             if fit.get(key) is not None and np.isfinite(fit[key]):
                 fit[key] += 2*adjustment
+    if parameters:
+        extra = sum(p['parameters'] for p in parameters.values())
+        fit.update(vol_parameters=parameters, vol_parameter_count=extra,
+                   estimation_method='two-stage Gaussian-QML volatility / distribution fit',
+                   criteria_basis='descriptive two-stage; volatility parameters included')
+        if fit.get('parameters') is not None:
+            fit['distribution_parameters'] = fit['parameters']
+            fit['parameters'] += extra
+        if fit.get('conditional_parameters') is not None:
+            fit['conditional_parameters'] += extra
+        for key in ('aic', 'bic', 'two_stage_aic', 'two_stage_bic'):
+            if fit.get(key) is not None and np.isfinite(fit[key]):
+                fit[key] += (2 if key.endswith('aic') else np.log(len(scales)))*extra
 
 
 def conditional_weights(fit, weights):
     """Map original return weights into standardized coordinates exactly once."""
     weights = np.asarray(weights, dtype=float)
-    if fit.get('vol_standardization') != 'ewma':
+    if fit.get('vol_standardization') not in ('ewma', 'garch', 'nagarch'):
         return weights
     scale = np.asarray(fit['next_volatility'], dtype=float)
     if scale.shape != weights.shape or not np.isfinite(scale).all() or np.any(scale <= 0):

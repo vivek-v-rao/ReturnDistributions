@@ -60,7 +60,7 @@ def risk_report(fits, sample, weights, levels, *, allow_log=False,
         except (ValueError,ArithmeticError,KeyError) as exc:
             row.update(status='failed',error=str(exc))
         rows.append(row)
-    conditional = fits[0].get('vol_standardization') == 'ewma'
+    conditional = fits[0].get('vol_standardization') in ('ewma', 'garch', 'nagarch')
     if conditional:
         from .vol_standardization import conditional_weights
         order = fits[0]['symbols']
@@ -145,6 +145,6 @@ def print_risk_report(report, levels):
     print('Empirical tail mass: '+', '.join(f'{100*c:g}%: {(1-c)*first.observations:.2f} observations' for c in levels)+'.')
     print('Empirical VaR uses linear quantile interpolation; ES uses a fractional-weight tail mean.')
     if 'risk_basis' in report and str(first.risk_basis).startswith('next-period'):
-        print('Next-period conditional risk; empirical row is filtered historical simulation at next-period EWMA scales. Parameter/filter uncertainty is not included.')
+        print('Next-period conditional risk; empirical row is filtered historical simulation at next-period volatility scales. Parameter/filter uncertainty is not included.')
     else:
         print('Unconditional historical risk, not a forecast conditioned on current volatility; parameter uncertainty is not included.')

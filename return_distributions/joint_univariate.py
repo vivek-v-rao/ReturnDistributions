@@ -39,10 +39,12 @@ def format_univariate_comparison(table):
     columns = list(table.columns)
     if 'joint_models' in columns:
         columns = columns[:columns.index('joint_models')]
-    view = table[columns].drop(columns=['scipy_distribution', 'n', 'ks_p'], errors='ignore')
+    view = table[columns].drop(columns=['scipy_distribution', 'n', 'ks_p', 'vol_parameters', 'criteria_basis'], errors='ignore')
     if not table.empty and 'converged' in view and view['converged'].eq(True).fillna(False).all():
         view = view.drop(columns='converged')
     lines = []
+    if 'criteria_basis' in table:
+        lines.extend(str(value) for value in table.criteria_basis.dropna().unique())
     if not table.empty and 'status' in view and view['status'].eq('ok').fillna(False).all():
         lines.append('Status: all fits ok')
         view = view.drop(columns='status')
@@ -81,7 +83,7 @@ def format_univariate_comparison(table):
     return '\n'.join(lines)
 
 
-def fit_univariate_sample(sample, mapped, window, *, location=None, max_iterations=2000, return_type='simple', fit_timeout=None, vol_scales=None, cached_fits=None):
+def fit_univariate_sample(sample, mapped, window, *, location=None, max_iterations=2000, return_type='simple', fit_timeout=None, vol_scales=None, cached_fits=None, vol_parameters=None):
     """Use the already-selected complete-case sample, with no new data filtering."""
     tables = []
     for symbol in sample:
@@ -106,7 +108,13 @@ def fit_univariate_sample(sample, mapped, window, *, location=None, max_iteratio
             table['loglik'] -= adjustment
             for key in ('aic', 'bic'):
                 table[key] += 2*adjustment
-            print('Parameters/moments/KS: standardized units; loglik/AIC/BIC: original return units, conditional on fixed EWMA.')
+            if vol_parameters:
+                extra = vol_parameters[symbol]['parameters']
+                table['k'] += extra
+                table['aic'] += 2*extra
+                table['bic'] += np.log(len(sample))*extra
+                table['criteria_basis'] = 'descriptive two-stage; volatility parameters included'
+            print('Parameters/moments/KS: standardized units; loglik/AIC/BIC: original return units.')
         table['joint_models'] = table['name'].map(lambda name: ' '.join(mapped[name]))
         table['symbol'] = symbol
         table['window'] = window if window is not None else 'all'
@@ -116,7 +124,7 @@ def fit_univariate_sample(sample, mapped, window, *, location=None, max_iteratio
         table['sample_policy'] = 'joint-complete-case'
         if vol_scales is not None:
             table['parameter_units'] = 'standardized returns'
-            table['likelihood_units'] = 'original returns; conditional on fixed EWMA filter'
+            table['likelihood_units'] = 'original returns'
         print(format_univariate_comparison(table))
         tables.append(table)
     return tables

@@ -220,7 +220,7 @@ def compare_joint(fits, simulations=100000, seed=12345, batches=20, *, display_s
                        method='equal-mixture Monte Carlo; delta-method distance SE', status='ok', error='',
                        simulations=simulations, seed=seed, mc_batches=batches)
             if return_units:
-                row['comparison_units'] = 'original returns; EWMA at next-period scales'
+                row['comparison_units'] = 'original returns; volatility filters at next-period scales'
             if display_selected:
                 row['selected_p'] = good[i].get('selected_for_display', True)
                 row['selected_q'] = good[j].get('selected_for_display', True)

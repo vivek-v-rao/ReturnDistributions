@@ -1,4 +1,4 @@
-"""Two-stage marginal and Gaussian/Student-t copula fitting on common dates."""
+"""Two-stage marginal and Gaussian/Student-t/AC skew-t copula fitting on common dates."""
 import argparse
 import json
 from pathlib import Path
@@ -10,7 +10,8 @@ import pandas as pd
 from scipy import stats
 from .data import read_returns
 from .fitting import fit_many, fitted_distribution
-from .copulas import fit_copula
+from .copulas import fit_copula, COPULA_MODELS
+from .skew_t_copula import print_details
 from .copula_refinement import refine_joint
 from .table_format import aligned_table
 
@@ -31,7 +32,7 @@ def main(argv=None):
     parser.add_argument('--days', type=int, nargs='+')
     parser.add_argument('--input-type', choices=['prices', 'returns'], default='prices')
     parser.add_argument('--return-type', choices=['simple', 'log'], default='simple')
-    parser.add_argument('--copulas', choices=['gaussian', 'student-t'], nargs='+', default=['gaussian', 'student-t'])
+    parser.add_argument('--copulas', choices=COPULA_MODELS, nargs='+', default=['gaussian', 'student-t'])
     parser.add_argument('--marginal-mode', choices=['fitted', 'ranks'], default='fitted')
     parser.add_argument('--marginal-models', nargs='+', default=['student-t'], help='Candidate univariate families for each asset')
     parser.add_argument('--marginal', action='append', default=[], metavar='SYMBOL=MODEL', help='Override an asset marginal family')
@@ -42,6 +43,8 @@ def main(argv=None):
     parser.add_argument('--output', type=Path, default=Path('copula_fits.json'))
     parser.add_argument('--no-save', action='store_true', help='Screen output only; do not write fit, summary, or marginal audit files')
     args = parser.parse_args(argv)
+    if args.joint_refine and 'azzalini-skew-t' in args.copulas:
+        parser.error('--joint-refine currently supports only Gaussian and Student-t copulas')
     if args.joint_refine and args.marginal_mode == 'ranks': parser.error('--joint-refine requires fitted marginals, not ranks')
     if args.days and min(args.days) < 8: parser.error('Windows must be >=8')
     if args.max_iterations < 1 or not 0 < args.cdf_clip < .01: parser.error('Positive iterations and 0 < cdf-clip < .01 required')
@@ -72,6 +75,7 @@ def main(argv=None):
             print(f'\n{window or "All"} periods: {n} common returns; {dates["first_date"]} to {dates["last_date"]}')
             if window and n < window: print('Warning: fewer common observations than requested')
             marginals, marginal_ll, marginal_k = [], 0., 0
+            preparation_started = time.perf_counter()
             if args.marginal_mode == 'ranks':
                 u = np.column_stack([stats.rankdata(sample[s], method='average')/(n+1) for s in symbols])
                 ties = {s: n-sample[s].nunique() for s in symbols}
@@ -97,12 +101,15 @@ def main(argv=None):
             clipped = int(((u < args.cdf_clip) | (u > 1-args.cdf_clip)).sum())
             u = np.clip(u, args.cdf_clip, 1-args.cdf_clip)
             print(f'CDF entries clipped: {clipped}/{u.size}; threshold {args.cdf_clip:g}')
+            print(f'Copula marginal preparation elapsed: {time.perf_counter()-preparation_started:.3f} seconds', flush=True)
             for model in dict.fromkeys(args.copulas):
                 print(f'Fitting {model} copula...', flush=True)
+                fit_started = time.perf_counter()
                 try:
                     fit = fit_copula(u, model, args.max_iterations)
                 except (ValueError, np.linalg.LinAlgError) as exc:
                     fit = dict(model=model, status='failed', error=str(exc))
+                print(f'  {model} copula fitting elapsed: {time.perf_counter()-fit_started:.3f} seconds', flush=True)
                 record = dict(symbols=symbols, window=window, **dates, observations=n, return_type=args.return_type,
                               marginal_mode=args.marginal_mode, cdf_clip=args.cdf_clip, clipped_entries=clipped,
                               marginals=marginals, copula=fit)
@@ -118,8 +125,9 @@ def main(argv=None):
                 records.append(record)
                 summaries.append(row)
                 if 'correlation' in fit:
-                    print('\nLatent copula correlation (not raw return correlation):')
+                    print('\nLatent copula ' + ('scatter correlation' if model == 'azzalini-skew-t' else 'correlation') + ' (not raw return correlation):')
                     print(pd.DataFrame(fit['correlation'], index=symbols, columns=symbols).to_string(float_format=lambda v: f'{v:.3f}'))
+                print_details(fit, symbols)
                 if args.joint_refine:
                     print(f'Jointly refining {model} copula and marginals...', flush=True)
                     try:

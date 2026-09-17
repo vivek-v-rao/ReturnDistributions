@@ -16,14 +16,17 @@ def all_project_models():
 def prepare_samples(frame, modes, decays, warmup, floor, common):
     cache = {v: ewma_standardize(frame, v, warmup, floor) for v in decays} if 'ewma' in modes else {}
     eligible = frame.notna()
-    for standardized, _, _ in cache.values():
+    if any(m in modes for m in ('garch', 'nagarch')):
+        eligible &= ewma_standardize(frame, .94, warmup, floor)[0].notna()
+        cache['_garch'] = {}
+    for standardized, _, _ in (v for k, v in cache.items() if k != '_garch'):
         eligible &= standardized.notna()
     if common:
         eligible.loc[~eligible.all(axis=1), :] = False
     return cache, eligible
 
 
-def samples(frame, symbol, windows, modes, decays, cache, eligible, *, partitions=None, date_min=None, date_max=None, floor=1e-8):
+def samples(frame, symbol, windows, modes, decays, cache, eligible, *, partitions=None, date_min=None, date_max=None, floor=1e-8, warmup=63):
     index = frame.index[eligible[symbol]]
     index = index[date_mask(index, date_min, date_max)]
     for window, count, number, selected in blocks(index, windows, partitions or [1]):
@@ -32,6 +35,13 @@ def samples(frame, symbol, windows, modes, decays, cache, eligible, *, partition
             for decay in (decays if mode == 'ewma' else [None]):
                 if mode == 'none':
                     yield (window, mode, decay, frame.loc[selected, symbol], 0., 1., *extra)
+                elif mode in ('garch', 'nagarch'):
+                    from .garch_standardization import fit_selected
+                    standardized, scales, next_scales, parameters = fit_selected(
+                        frame[[symbol]], selected, mode, warmup, floor)
+                    cache['_garch'][(symbol, mode, selected[0], selected[-1])] = parameters
+                    yield (window, mode, decay, standardized.loc[selected, symbol],
+                           float(np.log(scales.loc[selected, symbol]).sum()), float(next_scales[symbol]), *extra)
                 else:
                     standardized, scales, next_scales = cache[decay]
                     next_scale = endpoint_scale(frame, scales, selected[-1], decay, floor)[symbol]
@@ -65,7 +75,7 @@ def risk_rows(fits, series, levels, scale):
 
 def print_risk(rows, mode, levels, n, title='Per-asset VaR and expected shortfall'):
     print(f'\n{title} (positive-loss percentages per input period):')
-    print('Next-period conditional risk; empirical = filtered historical simulation.' if mode == 'ewma'
+    print('Next-period conditional risk; empirical = filtered historical simulation.' if mode != 'none'
           else 'Unconditional historical risk; empirical = observed returns.')
     columns = ['name', 'status'] + [key for c in levels for key in (f'VaR_{100*c:g}%', f'ES_{100*c:g}%')]
     table = pd.DataFrame(rows).reindex(columns=columns)

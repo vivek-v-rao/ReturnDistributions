@@ -31,7 +31,7 @@ def main(argv=None):
     parser.add_argument('--return-scale', type=positive_seconds, default=1., help='Multiply input returns by this positive factor (default 1)')
     parser.add_argument('--symbols', nargs='+')
     parser.add_argument('--common-sample', action='store_true', help='Use identical complete-case dates across selected assets')
-    parser.add_argument('--standardize-vol', choices=['none', 'ewma'], nargs='+', help='Raw and/or lagged EWMA-standardized fits on identical dates')
+    parser.add_argument('--standardize-vol', choices=['none', 'ewma', 'garch', 'nagarch'], nargs='+', help='Raw and/or lagged volatility-standardized fits on identical dates; GARCH/NAGARCH use zero-mean Gaussian QML')
     decay_group = parser.add_mutually_exclusive_group()
     decay_group.add_argument('--vol-lambda', nargs='+', type=float, help='EWMA decays; default .94')
     decay_group.add_argument('--vol-halflife', type=positive_seconds)
@@ -66,7 +66,7 @@ def main(argv=None):
     validate_blocks(parser, args)
     modes = list(dict.fromkeys(args.standardize_vol or ['none']))
     decays = list(dict.fromkeys([float(np.exp(np.log(.5)/args.vol_halflife))] if args.vol_halflife is not None else (args.vol_lambda or [.94])))
-    if 'ewma' not in modes and (args.vol_lambda is not None or args.vol_halflife is not None or args.vol_warmup != 63 or args.vol_floor != 1e-8):
+    if 'ewma' not in modes and (args.vol_lambda is not None or args.vol_halflife is not None):
         parser.error('Volatility filter options require --standardize-vol ewma')
     if any(not np.isfinite(v) or not 0 < v < 1 for v in decays) or args.vol_warmup < 2:
         parser.error('Require 0 < --vol-lambda < 1 and --vol-warmup >=2')
@@ -124,18 +124,20 @@ def main(argv=None):
         cache, eligible = prepare_samples(frame, modes, decays, args.vol_warmup, args.vol_floor, args.common_sample)
         print('Sample policy: '+('common complete-case dates' if args.common_sample else 'per-asset available dates'))
         if cache:
-            print('Lagged zero-mean EWMA; common dates across raw/decay variants; warmup excluded. Parameters/moments/plots/distances use fit units; loglik/AIC/BIC use scaled return units. Filter/decay selection uncertainty is not counted.')
+            print('Lagged zero-mean volatility; common dates across filter variants; warmup excluded. Parameters/moments/plots/distances use fit units; loglik/AIC/BIC use scaled return units. Filter/decay selection uncertainty is not counted.')
         data_elapsed = time.perf_counter()-start
         frames = []
         distance_rows = []
         risks = []
         for symbol in frame:
             for window, mode, decay, series, adjustment, next_scale, count, block in samples(frame, symbol, args.days, modes, decays, cache, eligible,
-                    partitions=args.subperiods, date_min=args.date_min, date_max=args.date_max, floor=args.vol_floor):
+                    partitions=args.subperiods, date_min=args.date_min, date_max=args.date_max, floor=args.vol_floor, warmup=args.vol_warmup):
                 print(f'\nPartition: {count}; block: {block}/{count}')
                 print(f'\n{symbol}: {len(series)} returns; ' +
                       (f'{series.index.min().date()} to {series.index.max().date()}' if len(series) else 'no data'))
                 print(f'Volatility standardization: {mode}'+(f'; lambda={decay}; next-period SD={next_scale:.6g} (scaled return units)' if mode == 'ewma' else ''))
+                if mode in ('garch', 'nagarch'):
+                    print(f'Next-period SD={next_scale:.6g} (scaled return units); Gaussian QML; zero mean; descriptive two-stage AIC/BIC.')
                 if count == 1 and window is not None and len(series) < window:
                     print(f'Warning: fewer than {window} requested observations')
                 fits = fit_many(series.to_numpy(), args.models, location=args.location, max_iterations=args.max_iterations,
@@ -154,19 +156,29 @@ def main(argv=None):
                                     starts=args.mixture_starts, seed=args.mixture_seed,
                                     min_weight=args.mixture_min_weight, eigen_floor=args.mixture_eigen_floor,
                                     fit_timeout=args.fit_timeout)
-                                print_components(row, 'standardized return units' if mode == 'ewma' else 'return units')
+                                print_components(row, 'standardized return units' if mode != 'none' else 'return units')
                             except Exception as exc:
                                 row = dict(name=f'{model} [{count} components]', components=count,
                                     status='timeout' if isinstance(exc, FitTimeout) else 'failed',
                                     converged=False, error=str(exc), fit_sec=time.perf_counter()-fit_start)
                             mixture_rows.append(row)
                     fits = pd.concat([fits, pd.DataFrame(mixture_rows)], ignore_index=True)
-                if mode == 'ewma':
+                if mode != 'none':
                     for key in ('loglik', 'aic', 'bic'):
                         if key not in fits: fits[key] = np.nan
                     fits['standardized_loglik'] = fits['loglik']
                     fits['loglik'] -= adjustment
                     for key in ('aic', 'bic'): fits[key] += 2*adjustment
+                if mode in ('garch', 'nagarch'):
+                    import json
+                    vol_parameters = cache['_garch'][(symbol, mode, series.index[0], series.index[-1])]
+                    extra = vol_parameters[symbol]['parameters']
+                    fits['k'] += extra
+                    fits['aic'] += 2*extra
+                    fits['bic'] += np.log(len(series))*extra
+                    fits['vol_parameters'] = json.dumps(vol_parameters)
+                    fits['vol_parameter_count'] = extra
+                    fits['criteria_basis'] = 'descriptive two-stage; volatility parameters included'
                 singles = fits.loc[fits.components.eq(1)] if 'components' in fits else fits
                 print(format_univariate_comparison(singles.drop(columns=['mixture_fit', 'mixture_model'], errors='ignore')))
                 if args.max_components > 1:
@@ -186,10 +198,10 @@ def main(argv=None):
                 fits['vol_standardization'] = mode
                 fits['vol_lambda'] = np.nan if decay is None else decay
                 fits['vol_log_jacobian'] = adjustment
-                fits['next_volatility'] = next_scale if mode == 'ewma' else np.nan
-                fits['vol_warmup'] = args.vol_warmup if mode == 'ewma' else np.nan
-                fits['vol_floor'] = args.vol_floor if mode == 'ewma' else np.nan
-                fits['parameter_units'] = 'standardized returns' if mode == 'ewma' else 'scaled returns'
+                fits['next_volatility'] = next_scale if mode != 'none' else np.nan
+                fits['vol_warmup'] = args.vol_warmup if mode != 'none' else np.nan
+                fits['vol_floor'] = args.vol_floor if mode != 'none' else np.nan
+                fits['parameter_units'] = 'standardized returns' if mode != 'none' else 'scaled returns'
                 fits['likelihood_units'] = 'scaled returns'
                 fits['sample_policy'] = 'common-complete-case' if args.common_sample else 'per-asset'
                 frames.append(fits)
@@ -210,7 +222,7 @@ def main(argv=None):
         combined = pd.concat(frames, ignore_index=True)
         if len(modes) > 1 or ('ewma' in modes and len(decays) > 1):
             combined = criterion_ranks(combined, [combined.symbol, *rank_groups(combined)], include_unconverged=args.max_components > 1)
-            print('\nAggregate raw/EWMA comparison (ranks within asset/window across all settings):')
+            print('\nAggregate raw/volatility-filter comparison (ranks within asset/window across all settings):')
             cols = ['symbol', 'window', 'subperiods', 'block', 'name', 'components', 'vol_standardization', 'vol_lambda', 'k', 'loglik', 'aic', 'bic', 'aic_rank', 'bic_rank', 'status', 'fit_sec']
             print(aligned_table(combined[[c for c in cols if c in combined]]))
         if not args.no_save:

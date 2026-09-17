@@ -77,7 +77,7 @@ def rank_mixture_comparison(summary):
 def print_mixture_components(fit):
     """Report component moments, not scatter or skewed-family locations."""
     symbols = fit['symbols']
-    units = 'EWMA-standardized return units' if fit.get('vol_standardization') == 'ewma' else 'return units'
+    units = 'volatility-standardized return units' if fit.get('vol_standardization') in ('ewma', 'garch', 'nagarch') else 'return units'
     print(f'\nMixture components ({units}; per input period, not annualized; status: {fit["status"]}):')
     ordered_components = sorted(zip(fit['mixture_weights'], fit['component_fits']),
                                 key=lambda item: item[0], reverse=True)
@@ -163,12 +163,12 @@ def main(argv=None):
     parser.add_argument('--return-type', choices=['simple', 'log'], default='simple')
     parser.add_argument('--return-scale', type=positive_seconds, default=1., help='Multiply input returns by this positive factor (default 1)')
     parser.add_argument('--days', type=int, nargs='+')
-    parser.add_argument('--standardize-vol', choices=['none', 'ewma'], nargs='+', help='Fit raw and/or lagged EWMA-standardized returns on common dates; default none')
+    parser.add_argument('--standardize-vol', choices=['none', 'ewma', 'garch', 'nagarch'], nargs='+', help='Fit raw and/or lagged volatility-standardized returns on common dates; GARCH/NAGARCH use zero-mean Gaussian QML')
     decay_group = parser.add_mutually_exclusive_group()
     decay_group.add_argument('--vol-lambda', type=float, nargs='+', help='One or more EWMA decays per observation; default 0.94. Raw fits run once.')
     decay_group.add_argument('--vol-halflife', type=positive_seconds, help='Alternative EWMA half-life in input observations')
-    parser.add_argument('--vol-warmup', type=int, default=63, help='Initial observations used only to seed EWMA; default 63')
-    parser.add_argument('--vol-floor', type=positive_seconds, default=1e-8, help='Minimum EWMA standard deviation in return units; default 1e-8')
+    parser.add_argument('--vol-warmup', type=int, default=63, help='Initial observations used only to seed volatility; default 63')
+    parser.add_argument('--vol-floor', type=positive_seconds, default=1e-8, help='Minimum conditional standard deviation in return units; default 1e-8')
     parser.add_argument('--models', type=canonical_model, choices=(*ALL_JOINT_MODELS,'all'), nargs='+', default=list(JOINT_MODELS), help='Use all alone for every supported joint model, including experimental models. Aliases nig, gh, hyperbolic, variance-gamma select skewed variants')
     parser.add_argument('--sdb-cdf-points', type=int, default=512, help='Experimental SDB fitting grid: power of two, 64--16384; audit uses 4x points')
     parser.add_argument('--sdb-seed', type=int, default=12345)
@@ -191,7 +191,7 @@ def main(argv=None):
     parser.add_argument('--output', type=Path, default=Path('joint_distribution_fits.json'))
     parser.add_argument('--no-save', action='store_true', help='Screen output only; skip all result files and ignore output paths')
     parser.add_argument('--univariate', action='store_true', help='Also fit each asset separately on the same complete-case sample; save <output stem>_univariate.csv unless --no-save')
-    parser.add_argument('--copulas', nargs='+', choices=['gaussian', 'student-t'], help='Also fit two-stage copulas on the same sample')
+    parser.add_argument('--copulas', nargs='+', choices=['gaussian', 'student-t', 'azzalini-skew-t'], help='Also fit two-stage copulas on the same sample')
     parser.add_argument('--marginal-models', nargs='+', help='Candidate copula marginal families; default student-t')
     parser.add_argument('--marginal-criterion', choices=['aic', 'bic'], default='aic')
     parser.add_argument('--cdf-clip', type=float, default=1e-10)
@@ -219,8 +219,7 @@ def main(argv=None):
             except ValueError as exc: parser.error(str(exc))
     normalizations = list(dict.fromkeys(args.standardize_vol or ['none']))
     ewma_enabled = 'ewma' in normalizations
-    if not ewma_enabled and (args.vol_lambda is not None or args.vol_halflife is not None
-                                    or args.vol_warmup != 63 or args.vol_floor != 1e-8):
+    if not ewma_enabled and (args.vol_lambda is not None or args.vol_halflife is not None):
         parser.error('Volatility filter options require --standardize-vol ewma')
     decays = list(dict.fromkeys([float(np.exp(np.log(.5)/args.vol_halflife))] if args.vol_halflife is not None
                                else (args.vol_lambda or [.94])))
@@ -347,6 +346,10 @@ def main(argv=None):
             print('EWMA fit parameters describe standardized returns; raw fit parameters use scaled returns. All likelihood/AIC/BIC scores use scaled return units.')
             print('Compare raw/normalized scores only on identical dates. Selecting decay or warmup adds uncounted selection uncertainty.')
             print('Location options use each fit\'s input units; next-period EWMA risk uses its corresponding lambda\'s SDs.')
+        if any(m in normalizations for m in ('garch', 'nagarch')):
+            eligible_mask &= ewma_standardize(raw_frame, .94, args.vol_warmup, args.vol_floor)[0].notna().all(axis=1)
+            print('GARCH/NAGARCH: zero-mean Gaussian QML fitted per block; lagged variances. In-sample, not a forecasting backtest.')
+            print('AIC/BIC for estimated volatility filters are descriptive two-stage criteria; volatility parameters are counted.')
         complete = raw_frame.loc[eligible_mask]
         complete = complete.loc[date_mask(complete.index, args.date_min, args.date_max)]
         if weights is not None:
@@ -373,11 +376,18 @@ def main(argv=None):
                 print('Univariate Laplace counterparts estimate location freely unless --location is supplied; joint Laplace location pilots/default-zero are not applied.')
         print('Same complete-case observations for every joint model; no pairwise deletion.')
         if len(variants) > 1:
-            print('All raw/EWMA/lambda variants use identical dates, excluding warmup and all filter-ineligible observations; raw fits run once per window.')
+            print('All raw/volatility-filter variants use identical dates, excluding warmup and all filter-ineligible observations; raw fits run once per window.')
         for (window, count, block, selected), (normalization, decay) in itertools.product(blocks(complete.index, args.days, args.subperiods), variants):
             eligible = complete.loc[selected]
             print(f'\nPartition: {count}; block: {block}/{count}')
-            if normalization == 'ewma':
+            vol_parameters = None
+            if normalization in ('garch', 'nagarch'):
+                from .garch_standardization import fit_selected
+                standardized, vol_scales, next_vol, vol_parameters = fit_selected(
+                    raw_frame, selected, normalization, args.vol_warmup, args.vol_floor)
+                sample = standardized.loc[selected]
+                print('Block-end next-period SDs: '+', '.join(f'{s}={v:.6g}' for s,v in next_vol.items()))
+            elif normalization == 'ewma':
                 standardized, vol_scales, next_vol = vol_cache[decay]
                 sample = standardized.loc[eligible.index]
                 next_vol = endpoint_scale(raw_frame, vol_scales, selected[-1], decay, args.vol_floor)
@@ -389,7 +399,7 @@ def main(argv=None):
             first, last = str(sample.index[0].date()), str(sample.index[-1].date())
             print(f'\n{window or "All"} periods: {len(sample)} common returns; {first} to {last}')
             if args.standardize_vol:
-                print(f'Volatility normalization: {normalization}; '+(f'lambda={decay}; standardized parameter units; conditional risk' if normalization == 'ewma' else 'scaled return parameter units; unconditional risk'))
+                print(f'Volatility normalization: {normalization}; '+('standardized parameter units; conditional risk' if normalization != 'none' else 'scaled return parameter units; unconditional risk'))
             if count == 1 and window and len(sample) < window:
                 print('Warning: fewer common returns than requested')
             window_fits=[]
@@ -434,18 +444,18 @@ def main(argv=None):
                 fit.update(subperiods=count, block=block)
                 if args.max_components > 1: fit['components'] = components
                 if components > 1: fit['fit_label'] = label
-                if normalization == 'ewma':
+                if normalization != 'none':
                     annotate_fit(fit, vol_scales.loc[sample.index, list(order)], next_vol.loc[list(order)],
-                                 decay, args.vol_warmup, args.vol_floor)
+                                 decay, args.vol_warmup, args.vol_floor, normalization, vol_parameters)
                 elif args.standardize_vol:
                     fit.update(vol_standardization='none', parameter_units='original returns', likelihood_units='original returns')
-                fit['parameter_units'] = 'standardized returns' if normalization == 'ewma' else 'scaled returns'
+                fit['parameter_units'] = 'standardized returns' if normalization != 'none' else 'scaled returns'
                 fit['likelihood_units'] = 'scaled returns'
                 if args.asset_orders == 'all':
                     fit['asset_order'] = ' '.join(order) if model in ORDER_DEPENDENT_MODELS else 'order-invariant'
                     if model in ORDER_DEPENDENT_MODELS: fit['fit_label'] = label
                 if len(variants) > 1:
-                    variant_label = f'ewma lambda={decay}' if normalization == 'ewma' else 'none'
+                    variant_label = f'ewma lambda={decay}' if normalization == 'ewma' else normalization
                     fit['fit_label'] = fit.get('fit_label', label)+f' [vol: {variant_label}]'
                 results.append(fit)
                 window_fits.append(fit)
@@ -460,10 +470,10 @@ def main(argv=None):
                         print('Cholesky-coordinate log-skewness (asset-order dependent): ' + ', '.join(
                             f'{s}={v:.6g}' for s, v in zip(order, fit['skewness'])))
                     if model in (*LAPLACE_MIXTURE_MODELS,'nts-symmetric','nts-skewed') and 'gamma' in fit:
-                        print('Skew gamma ('+('standardized units' if normalization == 'ewma' else 'return units')+'): '+', '.join(f'{s}={v:.6g}' for s,v in zip(order,fit['gamma'])))
+                        print('Skew gamma ('+('standardized units' if normalization != 'none' else 'return units')+'): '+', '.join(f'{s}={v:.6g}' for s,v in zip(order,fit['gamma'])))
                     if 'delta' in fit:
                         label = 'SDB skew loadings' if model.startswith('sdb-') else 'Noncentrality delta'
-                        print(label+' ('+('standardized units' if normalization == 'ewma' else 'return units')+'): ' + ', '.join(f'{s}={v:.6g}' for s, v in zip(order, fit['delta'])))
+                        print(label+' ('+('standardized units' if normalization != 'none' else 'return units')+'): ' + ', '.join(f'{s}={v:.6g}' for s, v in zip(order, fit['delta'])))
                     if 'cdf_audit_passed' in fit:
                         print(f"CDF accuracy audit: passed={fit['cdf_audit_passed']}; loglik change={fit['cdf_loglik_change']:.5g}; max row log-density change={fit['cdf_max_logpdf_change']:.5g}")
                     if 'quadrature_audit_passed' in fit:
@@ -498,11 +508,12 @@ def main(argv=None):
                     observations=len(sample), return_type=args.return_type, return_scale=args.return_scale,
                     vol_standardization=normalization, vol_lambda=decay)
                 cr, cs, ca, risk, marginal_cache = fit_block(sample, args, metadata,
-                    scales=vol_scales.loc[sample.index] if normalization == 'ewma' else None,
-                    next_scale=next_vol if normalization == 'ewma' else None, weights=weights)
+                    scales=vol_scales.loc[sample.index] if normalization != 'none' else None,
+                    next_scale=next_vol if normalization != 'none' else None, weights=weights,
+                    vol_parameters=vol_parameters)
                 copula_records.extend(cr); copula_summaries.extend(cs); copula_audit.extend(ca); copula_risks.extend(risk)
             if mapped:
-                univariate_extra = ({'vol_scales': vol_scales.loc[sample.index]} if normalization == 'ewma' else {})
+                univariate_extra = ({'vol_scales': vol_scales.loc[sample.index], 'vol_parameters': vol_parameters} if normalization != 'none' else {})
                 tables = fit_univariate_sample(sample, mapped, window,
                     location=args.location, max_iterations=args.max_iterations, return_type=args.return_type,
                     fit_timeout=args.fit_timeout, cached_fits=marginal_cache, **univariate_extra)
@@ -528,8 +539,8 @@ def main(argv=None):
                 window_fits = [f for f in results if (f['window'], f['subperiods'], f['block']) == (window, count, block)]
                 first_fit = window_fits[0]
                 js_options = {'display_selected': True} if args.best_asset_order else {}
-                if ewma_enabled:
-                    print('\nJS in scaled return units: raw unconditional laws versus next-period rescaled EWMA laws.')
+                if any(m != 'none' for m in normalizations):
+                    print('\nJS in scaled return units: raw unconditional laws versus next-period rescaled conditional laws.')
                     js_options['return_units'] = True
                 rows = compare_joint(window_fits, args.simulations, args.seed, args.mc_batches, **js_options)
                 distance_rows.extend(dict(r, scope='joint', symbol='', window=window or 'all',
@@ -540,6 +551,8 @@ def main(argv=None):
         keys += ['subperiods', 'block']
         if args.standardize_vol:
             keys += ['vol_standardization', 'vol_lambda', 'vol_warmup', 'vol_floor', 'parameter_units', 'likelihood_units']
+        if any(m in normalizations for m in ('garch', 'nagarch')):
+            keys += ['vol_parameter_count', 'criteria_basis']
         if args.asset_orders == 'all': keys += ['asset_order']
         if args.best_asset_order: keys += ['selected_for_display']
         if any(r['model'] in {'nts-symmetric','nts-skewed'} for r in results): keys += ['nts_alpha','lam','nts_audit_passed']

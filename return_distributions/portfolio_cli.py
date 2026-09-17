@@ -86,14 +86,14 @@ def main(argv=None):
             missing = set(weights)-set(symbols)
             if missing: raise ValueError(f'Fit {index} lacks weight symbols: {sorted(missing)}')
             w = np.array([weights.get(s, 0.) for s in symbols])
-            if fit.get('vol_standardization') == 'ewma':
-                print(f'Fit {index}: next-period conditional risk using saved EWMA scales as of {fit.get("last_date")}.')
+            if fit.get('vol_standardization') in ('ewma', 'garch', 'nagarch'):
+                print(f'Fit {index}: next-period conditional risk using saved {fit["vol_standardization"]} scales as of {fit.get("last_date")}.')
             if 'copula' in fit or model in MC_JOINT_MODELS:
                 print(f'Simulating fit {index}: {model}, {stage}; {args.simulations} draws...',flush=True)
                 # Same seed across fits uses common random numbers for comparisons.
                 simulator = simulate_portfolio if 'copula' in fit else simulate_joint_portfolio
                 simulation_weights = w/fit.get('return_scale',1.)
-                if 'copula' in fit and fit.get('vol_standardization') == 'ewma':
+                if 'copula' in fit and fit.get('vol_standardization') in ('ewma', 'garch', 'nagarch'):
                     from .vol_standardization import conditional_weights
                     simulation_weights = conditional_weights(fit, simulation_weights)
                 metrics, draws = simulator(fit,simulation_weights,args.quantiles,args.risk_levels or [],args.simulations,
@@ -129,8 +129,8 @@ def main(argv=None):
             plots.append((f'{index}: {fit.get("fit_label",fit["model"])}, window={fit.get("window")}', distribution))
         if not rows: raise ValueError('No usable fits selected')
         result = pd.DataFrame(rows)
-        if any(f.get('vol_standardization') == 'ewma' for f in fits):
-            result['risk_basis'] = result.fit_index.map(lambda i: 'next-period conditional EWMA' if fits[i].get('vol_standardization') == 'ewma' else 'unconditional')
+        if any(f.get('vol_standardization') in ('ewma', 'garch', 'nagarch') for f in fits):
+            result['risk_basis'] = result.fit_index.map(lambda i: 'next-period conditional volatility' if fits[i].get('vol_standardization') in ('ewma', 'garch', 'nagarch') else 'unconditional')
         print('\nPortfolio distribution (per input return period; quantiles are returns, not losses):')
         view = result.drop(columns='weights').copy()
         risk_columns = [f'{key}_{level:g}' for level in dict.fromkeys(args.risk_levels or []) for key in ['var', 'es']]

@@ -1,6 +1,7 @@
 """Monte Carlo portfolio summaries from fitted parametric copulas."""
 import numpy as np
 from .copulas import CopulaJoint, sample_copula
+from .copula_quantiles import marginal_ppf
 
 
 def empirical_es(values, tail_probability):
@@ -46,7 +47,7 @@ def simulate_portfolio(record, weights, quantiles=(.01,.05,.5,.95,.99), risk_lev
         endpoint_count += int(((u[:,held] <= 0) | (u[:,held] >= 1)).sum())
         u = np.clip(u, np.nextafter(0.,1.), np.nextafter(1.,0.))
         values = np.zeros(count)
-        for j in held: values += w[j]*joint.marginals[j].ppf(u[:,j])
+        for j in held: values += w[j]*marginal_ppf(joint.marginals[j], u[:,j])
         if not np.isfinite(values).all(): raise ValueError('Nonfinite simulated returns; no draws were silently discarded')
         pieces.append(values)
     draws = np.concatenate(pieces)

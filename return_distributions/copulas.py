@@ -1,11 +1,16 @@
-"""Gaussian/t copula likelihoods and two-stage marginal/copula models."""
+"""Gaussian, Student-t and AC skew-t copula likelihoods and two-stage models."""
 import time
+from functools import lru_cache
 import numpy as np
 from scipy import optimize, stats
 from .fitting import fitted_distribution
+from .copula_quantiles import marginal_ppf
 
 
-def copula_logpdf(u, model, correlation, df=None):
+COPULA_MODELS = ['gaussian', 'student-t', 'azzalini-skew-t']
+
+
+def copula_logpdf(u, model, correlation, df=None, alpha=None):
     """Copula density on strictly interior uniform scores, not return density."""
     u = np.asarray(u, dtype=float)
     if u.ndim != 2 or not np.isfinite(u).all() or (u <= 0).any() or (u >= 1).any():
@@ -16,6 +21,9 @@ def copula_logpdf(u, model, correlation, df=None):
     if model == 'student-t':
         z = stats.t.ppf(u, df)
         return stats.multivariate_t.logpdf(z, shape=correlation, df=df)-stats.t.logpdf(z, df).sum(axis=1)
+    if model == 'azzalini-skew-t':
+        from .skew_t_copula import logpdf
+        return logpdf(u, correlation, df, alpha)
     raise ValueError('Unknown copula model')
 
 
@@ -26,17 +34,28 @@ def fit_copula(u, model='gaussian', max_iterations=1000):
         raise ValueError('Need >=2 assets and >=max(8,assets+2) complete observations')
     if not np.isfinite(u).all() or (u <= 0).any() or (u >= 1).any():
         raise ValueError('Uniform scores must lie strictly inside (0,1)')
-    if model not in {'gaussian', 'student-t'} or max_iterations < 1:
+    if model not in COPULA_MODELS or max_iterations < 1:
         raise ValueError('Invalid copula model or iteration limit')
     n, d = u.shape
     z = stats.norm.ppf(u)
     if np.linalg.matrix_rank(z-z.mean(axis=0)) < d:
         raise ValueError('Rank-deficient transformed returns')
+    if model == 'azzalini-skew-t':
+        from .skew_t_copula import fit
+        return fit(u, max_iterations)
     initial = np.corrcoef(z.T)
     chol = np.linalg.cholesky(initial)
     indices = np.tril_indices(d, -1)
     v0 = (chol/chol.diagonal()[:, None])[indices]
     k = len(v0)+(model == 'student-t')
+
+    @lru_cache(maxsize=16)
+    def transforms(df):
+        # Correlation-only finite-difference steps reuse these exact scores.
+        # Cache is local to this fit, so samples cannot contaminate each other.
+        if model == 'gaussian': return z, stats.norm.logpdf(z).sum(axis=1)
+        scores = stats.t.ppf(u, df)
+        return scores, stats.t.logpdf(scores, df).sum(axis=1)
 
     def unpack(theta):
         lower = np.eye(d)
@@ -48,7 +67,10 @@ def fit_copula(u, model='gaussian', max_iterations=1000):
     def objective(theta):
         try:
             corr, df = unpack(theta)
-            value = -float(copula_logpdf(u, model, corr, df).sum())
+            scores, marginal = transforms(df)
+            joint = (stats.multivariate_normal.logpdf(scores, cov=corr) if model == 'gaussian'
+                     else stats.multivariate_t.logpdf(scores, shape=corr, df=df))
+            value = -float((joint-marginal).sum())
             return value if np.isfinite(value) else 1e100
         except (ValueError, np.linalg.LinAlgError):
             return 1e100
@@ -75,6 +97,9 @@ def fit_copula(u, model='gaussian', max_iterations=1000):
 
 
 def sample_copula(fit, size=1, random_state=None):
+    if fit['model'] == 'azzalini-skew-t':
+        from .skew_t_copula import sample
+        return sample(fit, size, random_state)
     rng = np.random.default_rng(random_state)
     d = len(fit['correlation'])
     z = rng.multivariate_normal(np.zeros(d), fit['correlation'], size=size)
@@ -100,7 +125,7 @@ class CopulaJoint:
         u = sample_copula(self.copula, size, random_state)
         # Only roundoff endpoints are moved to the nearest representable interior.
         u = np.clip(u, np.nextafter(0., 1.), np.nextafter(1., 0.))
-        return np.column_stack([dist.ppf(u[:, j]) for j, dist in enumerate(self.marginals)])
+        return np.column_stack([marginal_ppf(dist, u[:, j]) for j, dist in enumerate(self.marginals)])
 
     def logpdf(self, x):
         x = np.atleast_2d(x)
@@ -109,4 +134,4 @@ class CopulaJoint:
         if (u <= 0).any() or (u >= 1).any():
             raise ValueError('Marginal CDF rounded to an endpoint; tail log density cannot be evaluated safely')
         marginal_ll = np.column_stack([dist.logpdf(x[:, j]) for j, dist in enumerate(self.marginals)]).sum(axis=1)
-        return copula_logpdf(u, self.copula['model'], self.copula['correlation'], self.copula['df'])+marginal_ll
+        return copula_logpdf(u, self.copula['model'], self.copula['correlation'], self.copula['df'], self.copula.get('alpha'))+marginal_ll

@@ -18,6 +18,8 @@ def refine_joint(x, record, max_iterations=1000):
     if record['marginal_mode'] != 'fitted': raise ValueError('Joint refinement requires parametric marginals')
     if record['copula'].get('status') != 'ok': raise ValueError('Joint refinement requires a successful interior initial copula')
     if record.get('clipped_entries', 0): raise ValueError('Joint refinement requires an unclipped starting likelihood')
+    if record['copula']['model'] not in {'gaussian', 'student-t'}:
+        raise ValueError('Joint refinement currently supports only Gaussian and Student-t copulas')
     if max_iterations < 1: raise ValueError('Iteration limit must be positive')
     x = np.asarray(x, dtype=float)
     if x.ndim != 2 or not np.isfinite(x).all(): raise ValueError('Invalid refinement sample')
