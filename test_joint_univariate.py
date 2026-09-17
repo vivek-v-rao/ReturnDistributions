@@ -1,3 +1,7 @@
+"""Test separate univariate fits on the joint CLI's common sample.
+Cover model mapping, compact output, cached fitting, saving, and failures.
+"""
+
 import contextlib
 import io
 from pathlib import Path
