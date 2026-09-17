@@ -1,3 +1,7 @@
+"""Test univariate normal tempered stable laws and the NIG special case.
+Cover quantiles, sampling, fitting, parameter counts, and copula marginals.
+"""
+
 import unittest
 import numpy as np
 from scipy import stats

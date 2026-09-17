@@ -1,3 +1,7 @@
+"""Test distribution alias resolution, deduplication, and canonical output.
+Cover univariate and joint APIs, fitting, and CLI integration.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test median and KDE-mode location pilots for joint Laplace mixtures.
+Cover two-stage score metadata, rankings, portfolio risk, and CLI validation.
+"""
+
 import contextlib
 import io
 import json

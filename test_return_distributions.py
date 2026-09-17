@@ -1,3 +1,7 @@
+"""Test univariate distribution fitting, parameter counts, and reconstruction.
+Cover convergence failures, scale equivariance, aliases, and missing-price inputs.
+"""
+
 import unittest
 import numpy as np
 from scipy import stats

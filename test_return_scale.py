@@ -1,3 +1,7 @@
+"""Test return scaling in univariate and joint fitting programs.
+Check likelihoods, fitted parameters, portfolio risk units, and invalid scales.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test mixture component weights, means, standard deviations, and correlations.
+Cover undefined Student-t moments and the distinction between NIG mean and location.
+"""
+
 import contextlib
 import io
 import unittest

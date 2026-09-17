@@ -1,3 +1,7 @@
+"""Test finite NIG mixture densities, moments, and portfolio risk.
+Cover shared shape fitting, bounds, permutations, JS distances, and saved records.
+"""
+
 import contextlib
 import io
 import json

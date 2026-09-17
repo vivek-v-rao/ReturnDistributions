@@ -1,3 +1,7 @@
+"""Test linear portfolio projections of fitted joint distributions.
+Cover moments, simulation checks, limiting cases, weights, and CLI output.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test screen-only runs across univariate, joint, and copula CLIs.
+Ensure outputs are untouched while plotting and failure reporting still work.
+"""
+
 import contextlib
 import io
 from pathlib import Path

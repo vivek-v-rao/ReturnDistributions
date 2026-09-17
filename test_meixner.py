@@ -1,3 +1,7 @@
+"""Test Meixner special cases, reflection, densities, and moments.
+Cover quantiles, sampling, expected shortfall, and fitting.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats
