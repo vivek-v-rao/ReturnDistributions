@@ -1,3 +1,7 @@
+"""Test multivariate normal and Student-t fitting and parameter restrictions.
+Exercise fixed locations, invalid inputs, and the joint CLI.
+"""
+
 import contextlib
 import io
 import json

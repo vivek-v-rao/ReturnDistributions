@@ -1,3 +1,7 @@
+"""Test two-piece multivariate generalized-t densities and moment calculations.
+Cover limiting cases, fit reconstruction, seeded risk, and CLI integration.
+"""
+
 import contextlib
 import io
 import json

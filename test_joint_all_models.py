@@ -1,3 +1,7 @@
+"""Test joint-model catalog expansion and early CLI validation.
+Ensure informational notes describe only selected distribution families.
+"""
+
 import contextlib
 import io
 import json

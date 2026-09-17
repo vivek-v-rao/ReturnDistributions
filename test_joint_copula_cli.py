@@ -1,3 +1,7 @@
+"""Test copula fitting within the joint-distribution command-line workflow.
+Cover shared samples, cached marginals, likelihood scores, risk, and validation.
+"""
+
 import contextlib
 import io
 import json

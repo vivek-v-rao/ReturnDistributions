@@ -1,3 +1,7 @@
+"""Test joint portfolio risk reports and empirical tail calculations.
+Cover signed and zero weights, skipped fits, windows, and weights-file validation.
+"""
+
 import contextlib
 import io
 from pathlib import Path

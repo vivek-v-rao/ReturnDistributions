@@ -1,3 +1,7 @@
+"""Test elliptical power-exponential joint distributions and normal limits.
+Cover univariate consistency, simulation, fitting, and fixed parameters.
+"""
+
 import json
 import unittest
 import numpy as np

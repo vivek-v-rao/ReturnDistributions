@@ -1,3 +1,7 @@
+"""Test joint generalized-hyperbolic densities, moments, and simulation.
+Cover family fits, fixed locations, free lambda, and nonconvergence.
+"""
+
 import unittest
 import json
 import numpy as np

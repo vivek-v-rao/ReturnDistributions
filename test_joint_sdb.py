@@ -1,3 +1,7 @@
+"""Test Sahu-Dey-Branco skew distributions and their symmetric limits.
+Cover CDF accuracy, sampling, fitting, portfolio risk, and audit failures.
+"""
+
 import contextlib
 import io
 import json

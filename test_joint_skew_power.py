@@ -1,3 +1,7 @@
+"""Test skewed multivariate power-exponential laws and their limiting cases.
+Cover sampling, portfolio risk, fixed power, and asset-order dependence.
+"""
+
 import json
 import unittest
 

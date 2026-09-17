@@ -1,3 +1,7 @@
+"""Test multivariate generalized-t densities, nesting, and moment thresholds.
+Cover sampling, portfolio projections, fitting, serialization, and CLI risk.
+"""
+
 import contextlib
 import io
 import json

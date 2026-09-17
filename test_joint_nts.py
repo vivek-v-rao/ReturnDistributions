@@ -1,3 +1,7 @@
+"""Test multivariate normal tempered stable densities and portfolio projections.
+Cover special cases, sampling, permutations, fit reconstruction, and audits.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test normal-exponential Laplace mixture densities and their singularities.
+Cover moments, portfolio risk, fitting restrictions, and model registration.
+"""
+
 import json
 import unittest
 import numpy as np

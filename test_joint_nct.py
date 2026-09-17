@@ -1,3 +1,7 @@
+"""Test multivariate noncentral-t limits, mixture integrals, and projections.
+Cover moments, expected shortfall, fitting, and fixed locations.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats

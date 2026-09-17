@@ -1,3 +1,7 @@
+"""Test finite joint mixtures, density reconstruction, moments, and constraints.
+Cover shared Student-t degrees of freedom, fit ranks, and CLI comparisons.
+"""
+
 import contextlib
 import io
 import json

@@ -1,3 +1,7 @@
+"""Test multivariate Azzalini skew-t densities, projections, and moments.
+Cover finite expected shortfall with infinite variance and fit reconstruction.
+"""
+
 import unittest
 import numpy as np
 from scipy import stats

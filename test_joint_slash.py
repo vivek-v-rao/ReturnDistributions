@@ -1,3 +1,7 @@
+"""Test joint slash distributions, limiting cases, and portfolio tail risk.
+Cover quantiles, fitting, and exclusion of failed numerical accuracy audits.
+"""
+
 import unittest
 from unittest.mock import patch
 import numpy as np
