@@ -1,3 +1,7 @@
+"""Test per-fit process timeouts, worker cleanup, and exception propagation.
+Cover uninterrupted subsequent fits and CLI timeout reporting.
+"""
+
 import contextlib
 import io
 import multiprocessing as mp

@@ -1,3 +1,7 @@
+"""Test finite GED mixtures, moments, densities, and portfolio projections.
+Cover fitted parameter counts, fixed locations, and CLI family selection.
+"""
+
 import contextlib
 import io
 import json

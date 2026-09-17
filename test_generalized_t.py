@@ -1,3 +1,7 @@
+"""Test univariate generalized-t limits, densities, moments, and tail risk.
+Cover quantiles, fitted-law reconstruction, and copula marginal integration.
+"""
+
 import contextlib
 import io
 import json

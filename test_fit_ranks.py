@@ -1,3 +1,7 @@
+"""Test independent AIC/BIC ranks, ties, and fit eligibility rules.
+Verify that univariate fitting exports both rankings.
+"""
+
 import unittest
 import numpy as np
 import pandas as pd

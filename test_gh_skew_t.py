@@ -1,3 +1,7 @@
+"""Test GH skew-t symmetric limits, mixture densities, and moment thresholds.
+Cover univariate/joint fitting, portfolio projection, and expected shortfall.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats

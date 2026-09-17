@@ -1,3 +1,7 @@
+"""Test Fernandez-Steel skew-normal specifications and the normal limit.
+Cover parameter counts, fitted-law reconstruction, and copula marginals.
+"""
+
 import contextlib
 import io
 import json
