@@ -1,3 +1,7 @@
+"""Test fitted-distribution JS, KS, and KL comparisons.
+Cover analytic references, Monte Carlo estimates, asset ordering, and CLI output.
+"""
+
 import contextlib
 import io
 from pathlib import Path

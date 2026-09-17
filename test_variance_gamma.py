@@ -1,3 +1,7 @@
+"""Test variance-gamma densities, CDFs, moments, and portfolio projections.
+Cover special cases and univariate/joint fit reconstruction.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats

@@ -1,3 +1,7 @@
+"""Test aggregate model comparisons across families, component counts, and windows.
+Cover AIC/BIC ranks, ties, and selected asset-order filtering.
+"""
+
 import unittest
 
 import numpy as np

@@ -1,3 +1,7 @@
+"""Test EGB2 densities, logistic limits, reflection, and tail calculations.
+Cover moments, simulation, fitting aliases, and copula integration.
+"""
+
 import unittest
 import numpy as np
 from scipy import integrate, stats

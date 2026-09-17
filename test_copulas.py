@@ -1,3 +1,7 @@
+"""Test Gaussian and Student-t copula densities, sampling, and estimation.
+Cover independence, normal joint-density equivalence, CLI modes, and validation.
+"""
+
 import contextlib
 import io
 import json

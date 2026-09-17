@@ -1,3 +1,7 @@
+"""Test conventional distribution labels and backward-compatible aliases.
+Ensure display formatting does not mutate stored model identifiers.
+"""
+
 import unittest
 import pandas as pd
 from return_distributions.model_names import canonical_model, display_model_label

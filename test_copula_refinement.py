@@ -1,3 +1,7 @@
+"""Test joint likelihood refinement from two-stage copula estimates.
+Cover normal MLE, Student-t refinement, constraints, and failure handling.
+"""
+
 import unittest
 import copy
 import numpy as np

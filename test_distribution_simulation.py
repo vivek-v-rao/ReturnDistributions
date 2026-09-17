@@ -1,3 +1,7 @@
+"""Test joint-distribution simulation presets and reproducible fitting studies.
+Check simulated moments, exclusions, and ranking ties.
+"""
+
 import unittest
 import numpy as np
 import pandas as pd

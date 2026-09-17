@@ -1,3 +1,7 @@
+"""Test Champernowne densities, special cases, simulation, and expected shortfall.
+Exercise fitting and command-line integration.
+"""
+
 import contextlib
 import io
 from pathlib import Path

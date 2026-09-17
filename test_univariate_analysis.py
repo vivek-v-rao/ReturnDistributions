@@ -1,3 +1,7 @@
+"""Test univariate model selection, sample alignment, and EWMA normalization.
+Cover likelihood adjustments, saved risk units, catalog expansion, and validation.
+"""
+
 import contextlib
 import io
 from pathlib import Path

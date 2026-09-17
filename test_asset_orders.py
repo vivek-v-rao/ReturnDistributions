@@ -1,3 +1,7 @@
+"""Test asset-order enumeration, best-order selection, and workload safeguards.
+Cover symbol-aligned risk, comparison output, and complete saved fit audits.
+"""
+
 import contextlib
 import io
 import itertools

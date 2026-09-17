@@ -1,3 +1,7 @@
+"""Test univariate finite-mixture densities and baseline conversions.
+Cover CLI fitting, saved-law reconstruction, and early input validation.
+"""
+
 import contextlib
 import io
 import json

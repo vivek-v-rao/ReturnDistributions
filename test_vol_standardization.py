@@ -1,3 +1,7 @@
+"""Test lagged EWMA volatility filters and common-sample comparisons.
+Cover multiple decays, gaps, Jacobians, rescaled risk, JS distances, and saved fits.
+"""
+
 import contextlib
 import io
 import json

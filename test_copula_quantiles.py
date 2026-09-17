@@ -1,3 +1,7 @@
+"""Test accelerated NIG marginal quantiles and saved-copula dispatch.
+Cover reference accuracy, reflection, extreme tails, caching, and fallbacks.
+"""
+
 import unittest
 from unittest.mock import patch
 import numpy as np

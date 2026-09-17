@@ -1,3 +1,7 @@
+"""Test model help, alias acceptance, and rejection of unknown models before I/O.
+Check that numerical fit failures remain visible without stopping other fits.
+"""
+
 import contextlib
 import io
 from pathlib import Path

@@ -1,3 +1,7 @@
+"""Test simulated copula portfolio risk against a normal reference.
+Cover reproducibility, marginal moment requirements, empirical ES, and the CLI.
+"""
+
 import contextlib
 import io
 import json
